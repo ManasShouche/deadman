@@ -1,11 +1,13 @@
 """The current Deadman command-line entry point."""
 
 from pathlib import Path
+from typing import Annotated
 
 import typer
 
 from deadman.detectors.replay import replay_fixture
 from deadman.report import render_incident_report
+from deadman.run import run_supervised_command
 
 app = typer.Typer(add_completion=False, no_args_is_help=False)
 
@@ -54,6 +56,37 @@ def report(incident_id: str) -> None:
     if incident is None:
         raise typer.BadParameter(f"no replay incident found for {incident_id}")
     typer.echo(render_incident_report(incident))
+
+
+@app.command(
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def run(
+    ctx: typer.Context,
+    database: Annotated[
+        Path | None,
+        typer.Option(
+            "--database",
+            help="SQLite database path. Defaults to .deadman/deadman.sqlite.",
+        ),
+    ] = None,
+    timeout: Annotated[
+        float | None,
+        typer.Option("--timeout", help="Optional supervised command timeout in seconds."),
+    ] = None,
+) -> None:
+    """Run and record a supervised command after --."""
+    argv = tuple(ctx.args)
+    if not argv:
+        raise typer.BadParameter("provide a command after --")
+
+    summary = run_supervised_command(
+        argv,
+        workspace=Path.cwd(),
+        database_path=database,
+        timeout_seconds=timeout,
+    )
+    typer.echo(summary.report)
 
 
 def main() -> None:
