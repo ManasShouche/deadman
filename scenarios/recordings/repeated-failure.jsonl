@@ -1,0 +1,5 @@
+{"type":"run.state","active":true,"session_id":"session-repeat"}
+{"type":"attempt.completed","evidence_id":"attempt_001","attempt_id":"1","completed_at":1.0,"workspace_fingerprint":"ws-a","test_summary":"1 failed","failure_signature":"pytest:test_repeat","assistant_hypothesis":"inspect failing assertion"}
+{"type":"attempt.completed","evidence_id":"attempt_002","attempt_id":"2","completed_at":2.0,"workspace_fingerprint":"ws-a","test_summary":"1 failed","failure_signature":"pytest:test_repeat","assistant_hypothesis":"inspect failing assertion"}
+{"type":"attempt.completed","evidence_id":"attempt_003","attempt_id":"3","completed_at":3.0,"workspace_fingerprint":"ws-a","test_summary":"1 failed","failure_signature":"pytest:test_repeat","assistant_hypothesis":"inspect failing assertion"}
+{"type":"verification.snapshot","before_fingerprint":"ws-a:1-failed","after_fingerprint":"ws-b:0-failed","success_signal":"target command passed"}

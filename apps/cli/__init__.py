@@ -4,7 +4,8 @@ from pathlib import Path
 
 import typer
 
-from deadman.detectors.replay import replay_hung_process_fixture
+from deadman.detectors.replay import replay_fixture
+from deadman.report import render_incident_report
 
 app = typer.Typer(add_completion=False, no_args_is_help=False)
 
@@ -19,18 +20,51 @@ def root(ctx: typer.Context) -> None:
 @app.command()
 def replay(path: Path) -> None:
     """Replay a deterministic fixture without live Codex or OpenAI calls."""
-    signal = replay_hung_process_fixture(path)
-    if signal is None:
+    incident = replay_fixture(path)
+    if incident is None:
         typer.echo("No signals detected.")
         return
 
-    idle_seconds = signal.details.get("idle_seconds", "unknown")
-    pid = signal.details.get("pid", "unknown")
     typer.echo(
-        f"{signal.kind.value} {signal.evidence_ids[0]} pid={pid} idle_seconds={idle_seconds}"
+        f"{incident.signal.kind.value} {incident.diagnosis.recommended_action.value} "
+        f"{'RESOLVED' if incident.verification.resolved else 'ESCALATED'}"
     )
+
+
+@app.command()
+def demo() -> None:
+    """Run all bundled deterministic replay demonstrations."""
+    for fixture in _demo_fixtures():
+        incident = replay_fixture(fixture)
+        if incident is None:
+            typer.echo(f"{fixture.stem}: NO_SIGNAL")
+            continue
+        typer.echo(
+            f"{fixture.stem}: {incident.signal.kind.value} -> "
+            f"{incident.diagnosis.recommended_action.value} -> "
+            f"{'RESOLVED' if incident.verification.resolved else 'ESCALATED'}"
+        )
+
+
+@app.command()
+def report(incident_id: str) -> None:
+    """Render a terminal report for a bundled replay incident."""
+    path = Path("scenarios/recordings") / f"{incident_id}.jsonl"
+    incident = replay_fixture(path)
+    if incident is None:
+        raise typer.BadParameter(f"no replay incident found for {incident_id}")
+    typer.echo(render_incident_report(incident))
 
 
 def main() -> None:
     """Console script entry point."""
     app()
+
+
+def _demo_fixtures() -> tuple[Path, ...]:
+    root = Path("scenarios/recordings")
+    return (
+        root / "hung-process.jsonl",
+        root / "repeated-failure.jsonl",
+        root / "session-handoff.jsonl",
+    )

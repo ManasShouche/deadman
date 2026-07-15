@@ -161,3 +161,26 @@ class PolicyDecision(BaseModel):
     allowed: bool
     action: RecoveryAction
     reason: str
+
+
+class VerificationResult(BaseModel):
+    """Deterministic post-action verification result."""
+
+    model_config = ConfigDict(frozen=True)
+
+    resolved: bool
+    changed_progress_fingerprint: bool
+    success_signal: str | None
+    reason: str
+
+
+class ReplayIncident(BaseModel):
+    """Self-contained offline incident result."""
+
+    model_config = ConfigDict(frozen=True)
+
+    incident_id: str
+    signal: Signal
+    diagnosis: Diagnosis
+    policy: PolicyDecision
+    verification: VerificationResult

@@ -10,10 +10,12 @@ from deadman.domain.models import (
     ProcessObservation,
     RawAdapterEvent,
     RecoveryAction,
+    ReplayIncident,
     Severity,
     Signal,
     SignalKind,
     UsageObservation,
+    VerificationResult,
 )
 
 __all__ = [
@@ -26,8 +28,10 @@ __all__ = [
     "ProcessObservation",
     "RawAdapterEvent",
     "RecoveryAction",
+    "ReplayIncident",
     "Severity",
     "Signal",
     "SignalKind",
     "UsageObservation",
+    "VerificationResult",
 ]

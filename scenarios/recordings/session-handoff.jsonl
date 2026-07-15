@@ -1,0 +1,3 @@
+{"type":"run.state","active":true,"session_id":"session-budget"}
+{"type":"usage.observed","evidence_id":"usage_001","observed_at":1.0,"used_units":1000,"budget_units":1000,"manual_checkpoint_requested":false}
+{"type":"verification.snapshot","before_fingerprint":"handoff-before","after_fingerprint":"handoff-after","success_signal":"handoff written"}
