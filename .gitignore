@@ -1,0 +1,22 @@
+# Python environments and tooling
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Runtime state and local evidence
+.deadman/
+*.db
+*.sqlite
+*.sqlite3
+scenarios/recordings/*.local.jsonl
+
+# Editor and operating-system files
+.DS_Store
+.idea/
+.vscode/
