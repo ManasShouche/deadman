@@ -86,6 +86,9 @@ class DetectorConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     hung_timeout_seconds: float = 60.0
+    repeated_failure_threshold: int = 3
+    no_progress_attempt_threshold: int = 4
+    session_budget_threshold: int = 1_000
 
 
 class Signal(BaseModel):
@@ -98,3 +101,29 @@ class Signal(BaseModel):
     evidence_ids: tuple[str, ...]
     fingerprint: str
     details: dict[str, Any] = Field(default_factory=dict)
+
+
+class AttemptObservation(BaseModel):
+    """A completed attempt observed from replay or normalized adapter evidence."""
+
+    model_config = ConfigDict(frozen=True)
+
+    evidence_id: str
+    attempt_id: str
+    completed_at: float
+    workspace_fingerprint: str
+    test_summary: str
+    failure_signature: str | None = None
+    assistant_hypothesis: str | None = None
+
+
+class UsageObservation(BaseModel):
+    """Usage telemetry observed for a Deadman session budget."""
+
+    model_config = ConfigDict(frozen=True)
+
+    evidence_id: str
+    observed_at: float
+    used_units: int
+    budget_units: int
+    manual_checkpoint_requested: bool = False

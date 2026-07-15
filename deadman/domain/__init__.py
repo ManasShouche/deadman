@@ -1,6 +1,7 @@
 """Validated domain models and incident state transitions."""
 
 from deadman.domain.models import (
+    AttemptObservation,
     CapabilityReport,
     DetectorConfig,
     NormalizedEvent,
@@ -9,9 +10,11 @@ from deadman.domain.models import (
     Severity,
     Signal,
     SignalKind,
+    UsageObservation,
 )
 
 __all__ = [
+    "AttemptObservation",
     "CapabilityReport",
     "DetectorConfig",
     "NormalizedEvent",
@@ -20,4 +23,5 @@ __all__ = [
     "Severity",
     "Signal",
     "SignalKind",
+    "UsageObservation",
 ]
