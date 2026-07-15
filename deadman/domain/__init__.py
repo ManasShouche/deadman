@@ -6,6 +6,8 @@ from deadman.domain.models import (
     CapabilityReport,
     DetectorConfig,
     Diagnosis,
+    Incident,
+    IncidentState,
     NormalizedEvent,
     PolicyDecision,
     ProcessObservation,
@@ -15,6 +17,7 @@ from deadman.domain.models import (
     Severity,
     Signal,
     SignalKind,
+    StateTransition,
     UsageObservation,
     VerificationResult,
 )
@@ -25,6 +28,8 @@ __all__ = [
     "CapabilityReport",
     "DetectorConfig",
     "Diagnosis",
+    "Incident",
+    "IncidentState",
     "NormalizedEvent",
     "PolicyDecision",
     "ProcessObservation",
@@ -34,6 +39,7 @@ __all__ = [
     "Severity",
     "Signal",
     "SignalKind",
+    "StateTransition",
     "UsageObservation",
     "VerificationResult",
 ]

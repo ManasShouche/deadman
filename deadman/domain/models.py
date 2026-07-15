@@ -35,6 +35,18 @@ class RecoveryAction(StrEnum):
     HALT_AND_ESCALATE = "HALT_AND_ESCALATE"
 
 
+class IncidentState(StrEnum):
+    """Incident lifecycle states from the spec."""
+
+    OPEN = "OPEN"
+    DIAGNOSING = "DIAGNOSING"
+    AWAITING_APPROVAL = "AWAITING_APPROVAL"
+    RECOVERING = "RECOVERING"
+    VERIFYING = "VERIFYING"
+    RESOLVED = "RESOLVED"
+    ESCALATED = "ESCALATED"
+
+
 class RawAdapterEvent(BaseModel):
     """One raw JSONL line retained from the Codex adapter."""
 
@@ -197,3 +209,29 @@ class ReplayIncident(BaseModel):
     diagnosis: Diagnosis
     policy: PolicyDecision
     verification: VerificationResult
+
+
+class StateTransition(BaseModel):
+    """Auditable incident state transition."""
+
+    model_config = ConfigDict(frozen=True)
+
+    from_state: IncidentState
+    to_state: IncidentState
+    timestamp: float
+    reason: str
+    actor: str
+    evidence_ids: tuple[str, ...] = ()
+    action_fingerprint: str | None = None
+
+
+class Incident(BaseModel):
+    """Incident with bounded recovery attempts."""
+
+    model_config = ConfigDict(frozen=True)
+
+    incident_id: str
+    state: IncidentState
+    signal: Signal
+    transitions: tuple[StateTransition, ...] = ()
+    recovery_attempts: int = 0
