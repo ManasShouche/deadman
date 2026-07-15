@@ -163,6 +163,19 @@ class PolicyDecision(BaseModel):
     reason: str
 
 
+class ActionResult(BaseModel):
+    """Deterministic result from an attempted recovery action."""
+
+    model_config = ConfigDict(frozen=True)
+
+    action: RecoveryAction
+    attempted: bool
+    succeeded: bool
+    evidence_ids: tuple[str, ...] = ()
+    message: str
+    artifact_path: str | None = None
+
+
 class VerificationResult(BaseModel):
     """Deterministic post-action verification result."""
 

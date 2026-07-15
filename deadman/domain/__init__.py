@@ -1,6 +1,7 @@
 """Validated domain models and incident state transitions."""
 
 from deadman.domain.models import (
+    ActionResult,
     AttemptObservation,
     CapabilityReport,
     DetectorConfig,
@@ -19,6 +20,7 @@ from deadman.domain.models import (
 )
 
 __all__ = [
+    "ActionResult",
     "AttemptObservation",
     "CapabilityReport",
     "DetectorConfig",
