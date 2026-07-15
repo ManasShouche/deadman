@@ -211,6 +211,21 @@ class ReplayIncident(BaseModel):
     verification: VerificationResult
 
 
+class RunSummary(BaseModel):
+    """Summary of a supervised completed command."""
+
+    model_config = ConfigDict(frozen=True)
+
+    argv: tuple[str, ...]
+    returncode: int
+    database_path: str
+    raw_event_count: int
+    normalized_event_count: int
+    session_id: str | None
+    status: str
+    report: str
+
+
 class StateTransition(BaseModel):
     """Auditable incident state transition."""
 
