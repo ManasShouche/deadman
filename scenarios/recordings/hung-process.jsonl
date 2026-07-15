@@ -1,0 +1,1 @@
+{"type":"process.observed","evidence_id":"proc_001","root_pid":100,"pid":101,"parent_pid":100,"command_line":["python","-c","sleep"],"is_running":true,"is_descendant":true,"observed_at":0.0,"last_stdout_at":10.0,"last_stderr_at":null,"listening_ports":[],"ready_pattern_matched":false}
