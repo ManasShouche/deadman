@@ -20,3 +20,12 @@ This append-only log records how Codex and the developer built Deadman. It is de
 - **Validation:** `deadman`, `deadman replay scenarios/recordings/hung-process.jsonl`, pytest, Ruff, and mypy pass.
 - **Tooling note:** attempted Ruflo ToolSearch again; no Ruflo MCP tools were exposed. Three requested sub-agents were spawned, but they produced no usable file output and were interrupted before local implementation continued.
 - **Commit links:** `0a6f346` D1 dependencies; `a7afb15` JSONL evidence normalization; `79d1d0f` SQLite evidence persistence; `3b2f1a8` hung owned-process detection; `b10572b` hung fixture replay.
+
+## 2026-07-15 — Offline MVP replay pipeline
+
+- **Goal:** complete the judge-safe offline path through detect, diagnose, policy, simulated recovery, verify, and report.
+- **Human decisions:** continue toward completion and keep making regular commits.
+- **Codex contribution:** added the remaining pure detectors, fake evidence-bound diagnosis, deterministic policy validation, verification results, terminal reports, repeated-failure and session-handoff fixtures, `deadman demo`, and `deadman report`.
+- **Validation:** `deadman`, all three `deadman replay` fixtures, `deadman demo`, `deadman report repeated-failure`, 29 pytest tests, Ruff, mypy, and `git diff --check` pass.
+- **Remaining limitation:** live Codex supervision and real OpenAI Responses API diagnosis are still not wired; the completed path is deterministic offline replay.
+- **Commit links:** `e79a115` progress and budget detectors; `8b98d8e` diagnosis policy decisions; `f163ce3` offline replay demo pipeline.

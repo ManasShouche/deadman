@@ -6,14 +6,15 @@ Deadman is a local recovery harness for Codex sessions. It will observe a superv
 
 ## Current status
 
-This repo now has the D1 detection baseline:
+This repo now has the deterministic offline MVP path:
 
 - Codex JSONL parsing with conservative capability detection.
 - SQLite evidence persistence for raw events, normalized events, capabilities, process observations, and signals.
-- Process ownership/liveness observations.
-- A pure `HUNG_PROCESS` detector with an offline replay fixture.
+- Process ownership/liveness observations and pure detectors for `HUNG_PROCESS`, `REPEATED_FAILURE`, `NO_PROGRESS`, and `SESSION_BUDGET_RISK`.
+- Evidence-bound fake diagnosis, deterministic policy checks, fixture execution simulation, verification, and terminal reports.
+- `deadman demo`, `deadman replay`, and `deadman report` for the three bundled replay scenarios.
 
-Recovery actions, GPT-5.6 diagnosis, live supervision, reports, and the remaining detectors are not implemented yet.
+Live Codex supervision and real OpenAI Responses API calls are not wired yet. The current judge-safe path is offline replay with deterministic fixtures.
 
 ## Prerequisites
 
@@ -28,12 +29,16 @@ python3 -m venv .venv
 .venv/bin/python -m pip install -e ".[dev]"
 .venv/bin/deadman
 .venv/bin/deadman replay scenarios/recordings/hung-process.jsonl
+.venv/bin/deadman replay scenarios/recordings/repeated-failure.jsonl
+.venv/bin/deadman replay scenarios/recordings/session-handoff.jsonl
+.venv/bin/deadman demo
+.venv/bin/deadman report repeated-failure
 .venv/bin/python -m pytest
 .venv/bin/ruff check .
 .venv/bin/mypy .
 ```
 
-The no-argument `deadman` command still reports the baseline status. `deadman replay` currently supports the deterministic hung-process fixture and performs detection only; it does not recover or call OpenAI.
+The no-argument `deadman` command still reports the baseline status. `deadman replay` performs the offline pipeline without Codex, an OpenAI key, or network access.
 
 ## Safety model
 
@@ -43,16 +48,20 @@ Deadman never gives a model shell access or direct process/session control. Dete
 
 `scenarios/recordings/` holds replay fixtures and approved harmless compatibility captures. The capture's capability report documents only fields observed from the installed Codex CLI; it never assumes an undocumented event schema or hidden context-window telemetry.
 
-Current replay fixture:
+Current replay fixtures:
 
 ```bash
 .venv/bin/deadman replay scenarios/recordings/hung-process.jsonl
+.venv/bin/deadman replay scenarios/recordings/repeated-failure.jsonl
+.venv/bin/deadman replay scenarios/recordings/session-handoff.jsonl
 ```
 
-Expected output:
+Expected demo output:
 
 ```text
-HUNG_PROCESS proc_001 pid=101 idle_seconds=65.0
+hung-process: HUNG_PROCESS -> TERMINATE_DESCENDANT_PROCESS -> RESOLVED
+repeated-failure: REPEATED_FAILURE -> CANCEL_AND_RESUME -> RESOLVED
+session-handoff: SESSION_BUDGET_RISK -> CHECKPOINT_AND_RESPAWN -> RESOLVED
 ```
 
 ## Codex and GPT-5.6
