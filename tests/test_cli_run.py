@@ -29,8 +29,8 @@ def test_cli_run_records_supervised_command(tmp_path: Path) -> None:
     )
 
     assert result.exit_code == 0
-    assert "Status: completed" in result.stdout
-    assert "Session ID: cli-session" in result.stdout
+    assert "completed" in result.stdout
+    assert "cli-session" in result.stdout
     assert EvidenceStore(database).count("raw_events") == 2
 
 

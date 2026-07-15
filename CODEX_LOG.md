@@ -47,3 +47,11 @@ This append-only log records how Codex and the developer built Deadman. It is de
 - **Validation:** focused CLI tests, real `deadman run` smoke command, and requirements install passed before final full validation.
 - **Remaining limitation:** `deadman run` records completed JSONL runs; live streaming intervention during an actively stuck process remains future work.
 - **Commit links:** `892ade6` supervised run pipeline; `67d284f` supervised run command.
+
+## 2026-07-15 — Terminal app surface
+
+- **Goal:** replace minimal CLI summary lines with a terminal product surface closer to the spec.
+- **Human decisions:** user clarified that a print-only CLI demo was not enough.
+- **Codex contribution:** added Rich panel/table renderers for demo, replay, report, and run output while preserving the existing backend pipeline.
+- **Validation:** 52 pytest tests, Ruff, mypy, `deadman demo`, and `deadman run` smoke pass.
+- **Commit links:** pending at time of entry.

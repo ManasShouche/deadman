@@ -12,9 +12,9 @@ This repo now has the deterministic offline MVP path:
 - SQLite evidence persistence for raw events, normalized events, capabilities, process observations, and signals.
 - Process ownership/liveness observations and pure detectors for `HUNG_PROCESS`, `REPEATED_FAILURE`, `NO_PROGRESS`, and `SESSION_BUDGET_RISK`.
 - Evidence-bound fake diagnosis, deterministic policy checks, fixture execution simulation, verification, and terminal reports.
-- `deadman run`, `deadman demo`, `deadman replay`, and `deadman report`.
+- Rich terminal panels for `deadman run`, `deadman demo`, `deadman replay`, and `deadman report`.
 
-`deadman run` supervises a completed command, captures JSONL stdout evidence, retains stderr, and persists the adapter evidence to SQLite. Real-time stuck-process intervention and live OpenAI Responses API calls remain behind the tested core boundaries.
+`deadman run` supervises a completed command, captures JSONL stdout evidence, retains stderr, and persists the adapter evidence to SQLite. The terminal surface now shows panel/table output instead of raw summary lines. Real-time stuck-process intervention and live OpenAI Responses API calls remain behind the tested core boundaries.
 
 ## Prerequisites
 

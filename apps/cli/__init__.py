@@ -4,12 +4,20 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
+from rich.console import Console
 
 from deadman.detectors.replay import replay_fixture
 from deadman.report import render_incident_report
 from deadman.run import run_supervised_command
+from deadman.ui import (
+    render_demo_dashboard,
+    render_replay_result,
+    render_report_panel,
+    render_run_summary,
+)
 
 app = typer.Typer(add_completion=False, no_args_is_help=False)
+console = Console()
 
 
 @app.callback(invoke_without_command=True)
@@ -27,25 +35,20 @@ def replay(path: Path) -> None:
         typer.echo("No signals detected.")
         return
 
-    typer.echo(
-        f"{incident.signal.kind.value} {incident.diagnosis.recommended_action.value} "
-        f"{'RESOLVED' if incident.verification.resolved else 'ESCALATED'}"
-    )
+    console.print(render_replay_result(incident))
 
 
 @app.command()
 def demo() -> None:
     """Run all bundled deterministic replay demonstrations."""
+    incidents = []
     for fixture in _demo_fixtures():
         incident = replay_fixture(fixture)
         if incident is None:
             typer.echo(f"{fixture.stem}: NO_SIGNAL")
             continue
-        typer.echo(
-            f"{fixture.stem}: {incident.signal.kind.value} -> "
-            f"{incident.diagnosis.recommended_action.value} -> "
-            f"{'RESOLVED' if incident.verification.resolved else 'ESCALATED'}"
-        )
+        incidents.append(incident)
+    console.print(render_demo_dashboard(incidents))
 
 
 @app.command()
@@ -55,7 +58,7 @@ def report(incident_id: str) -> None:
     incident = replay_fixture(path)
     if incident is None:
         raise typer.BadParameter(f"no replay incident found for {incident_id}")
-    typer.echo(render_incident_report(incident))
+    console.print(render_report_panel(render_incident_report(incident)))
 
 
 @app.command(
@@ -86,7 +89,7 @@ def run(
         database_path=database,
         timeout_seconds=timeout,
     )
-    typer.echo(summary.report)
+    console.print(render_run_summary(summary))
 
 
 def main() -> None:
