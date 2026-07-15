@@ -38,3 +38,12 @@ This append-only log records how Codex and the developer built Deadman. It is de
 - **Validation:** `deadman demo`, 46 pytest tests, Ruff, mypy, and `git diff --check` pass.
 - **Remaining limitation:** the CLI still exposes only replay/demo/report; live `deadman run` wiring is intentionally deferred until the app-facing slice.
 - **Commit links:** `5366cc8` bounded recovery executors; `3f7739b` supervised subprocess JSONL capture; `c56c5f1` structured OpenAI diagnosis client; `c33c90b` workspace progress fingerprint; `d4b2de1` incident state machine; `44930ae` incident lifecycle persistence.
+
+## 2026-07-15 — App-facing completion slice
+
+- **Goal:** install requirements and finish the user-facing command surface after the backend core.
+- **Human decisions:** start with requirements installation and finish the app-facing slice last.
+- **Codex contribution:** refreshed the editable install from `pyproject.toml`, added a supervised completed-run pipeline, and exposed `deadman run -- <command>` with SQLite evidence persistence and command-output reporting.
+- **Validation:** focused CLI tests, real `deadman run` smoke command, and requirements install passed before final full validation.
+- **Remaining limitation:** `deadman run` records completed JSONL runs; live streaming intervention during an actively stuck process remains future work.
+- **Commit links:** `892ade6` supervised run pipeline; `67d284f` supervised run command.

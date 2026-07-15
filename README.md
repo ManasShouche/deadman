@@ -12,9 +12,9 @@ This repo now has the deterministic offline MVP path:
 - SQLite evidence persistence for raw events, normalized events, capabilities, process observations, and signals.
 - Process ownership/liveness observations and pure detectors for `HUNG_PROCESS`, `REPEATED_FAILURE`, `NO_PROGRESS`, and `SESSION_BUDGET_RISK`.
 - Evidence-bound fake diagnosis, deterministic policy checks, fixture execution simulation, verification, and terminal reports.
-- `deadman demo`, `deadman replay`, and `deadman report` for the three bundled replay scenarios.
+- `deadman run`, `deadman demo`, `deadman replay`, and `deadman report`.
 
-Live Codex supervision and real OpenAI Responses API calls are not wired yet. The current judge-safe path is offline replay with deterministic fixtures.
+`deadman run` supervises a completed command, captures JSONL stdout evidence, retains stderr, and persists the adapter evidence to SQLite. Real-time stuck-process intervention and live OpenAI Responses API calls remain behind the tested core boundaries.
 
 ## Prerequisites
 
@@ -28,6 +28,7 @@ python3 -m venv .venv
 .venv/bin/python -m pip install --upgrade pip
 .venv/bin/python -m pip install -e ".[dev]"
 .venv/bin/deadman
+.venv/bin/deadman run -- python -c 'import json; print(json.dumps({"type":"thread.started","thread_id":"demo"})); print(json.dumps({"type":"item.completed","item":{"type":"agent_message"}}))'
 .venv/bin/deadman replay scenarios/recordings/hung-process.jsonl
 .venv/bin/deadman replay scenarios/recordings/repeated-failure.jsonl
 .venv/bin/deadman replay scenarios/recordings/session-handoff.jsonl
@@ -38,7 +39,7 @@ python3 -m venv .venv
 .venv/bin/mypy .
 ```
 
-The no-argument `deadman` command still reports the baseline status. `deadman replay` performs the offline pipeline without Codex, an OpenAI key, or network access.
+The no-argument `deadman` command reports the baseline status. `deadman replay` performs the offline pipeline without Codex, an OpenAI key, or network access. `deadman run -- <command>` records a completed supervised command and writes `.deadman/deadman.sqlite` by default.
 
 ## Safety model
 
@@ -54,6 +55,12 @@ Current replay fixtures:
 .venv/bin/deadman replay scenarios/recordings/hung-process.jsonl
 .venv/bin/deadman replay scenarios/recordings/repeated-failure.jsonl
 .venv/bin/deadman replay scenarios/recordings/session-handoff.jsonl
+```
+
+Current live capture command shape:
+
+```bash
+.venv/bin/deadman run -- codex exec --json --sandbox workspace-write "Fix the failing test"
 ```
 
 Expected demo output:
