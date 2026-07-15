@@ -11,11 +11,16 @@ from typing import Any
 from pydantic import BaseModel
 
 from deadman.domain import (
+    ActionResult,
     CapabilityReport,
+    Diagnosis,
+    Incident,
     NormalizedEvent,
     ProcessObservation,
     RawAdapterEvent,
     Signal,
+    StateTransition,
+    VerificationResult,
 )
 
 
@@ -110,6 +115,57 @@ class EvidenceStore:
                 ],
             )
 
+    def add_incident(self, incident: Incident) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                insert or replace into incidents
+                (id, state, payload_json)
+                values (?, ?, ?)
+                """,
+                (incident.incident_id, incident.state.value, _model_json(incident)),
+            )
+
+    def add_transitions(self, incident_id: str, transitions: Iterable[StateTransition]) -> None:
+        with self._connect() as connection:
+            connection.executemany(
+                """
+                insert into transitions
+                (incident_id, from_state, to_state, payload_json)
+                values (?, ?, ?, ?)
+                """,
+                [
+                    (
+                        incident_id,
+                        transition.from_state.value,
+                        transition.to_state.value,
+                        _model_json(transition),
+                    )
+                    for transition in transitions
+                ],
+            )
+
+    def add_diagnosis(self, incident_id: str, diagnosis: Diagnosis) -> None:
+        self._add_incident_payload("diagnoses", incident_id, _model_json(diagnosis))
+
+    def add_action_result(self, incident_id: str, action_result: ActionResult) -> None:
+        self._add_incident_payload("action_results", incident_id, _model_json(action_result))
+
+    def add_verification_result(
+        self,
+        incident_id: str,
+        verification_result: VerificationResult,
+    ) -> None:
+        self._add_incident_payload(
+            "verification_results",
+            incident_id,
+            _model_json(verification_result),
+        )
+
+    def add_report(self, incident_id: str, report: str) -> None:
+        payload = json.dumps({"report": report}, sort_keys=True, separators=(",", ":"))
+        self._add_incident_payload("reports", incident_id, payload)
+
     def list_payloads(self, table: str) -> list[dict[str, Any]]:
         if table not in _PAYLOAD_TABLES:
             raise ValueError(f"unsupported payload table: {table}")
@@ -164,6 +220,44 @@ class EvidenceStore:
                     kind text not null,
                     payload_json text not null
                 );
+
+                create table if not exists incidents (
+                    id text primary key,
+                    state text not null,
+                    payload_json text not null
+                );
+
+                create table if not exists transitions (
+                    id integer primary key autoincrement,
+                    incident_id text not null,
+                    from_state text not null,
+                    to_state text not null,
+                    payload_json text not null
+                );
+
+                create table if not exists diagnoses (
+                    id integer primary key autoincrement,
+                    incident_id text not null,
+                    payload_json text not null
+                );
+
+                create table if not exists action_results (
+                    id integer primary key autoincrement,
+                    incident_id text not null,
+                    payload_json text not null
+                );
+
+                create table if not exists verification_results (
+                    id integer primary key autoincrement,
+                    incident_id text not null,
+                    payload_json text not null
+                );
+
+                create table if not exists reports (
+                    id integer primary key autoincrement,
+                    incident_id text not null,
+                    payload_json text not null
+                );
                 """
             )
 
@@ -172,6 +266,15 @@ class EvidenceStore:
         connection.row_factory = sqlite3.Row
         return connection
 
+    def _add_incident_payload(self, table: str, incident_id: str, payload_json: str) -> None:
+        if table not in _INCIDENT_PAYLOAD_TABLES:
+            raise ValueError(f"unsupported incident payload table: {table}")
+        with self._connect() as connection:
+            connection.execute(
+                f"insert into {table} (incident_id, payload_json) values (?, ?)",
+                (incident_id, payload_json),
+            )
+
 
 _PAYLOAD_TABLES = frozenset(
     {
@@ -179,9 +282,18 @@ _PAYLOAD_TABLES = frozenset(
         "capability_reports",
         "process_observations",
         "signals",
+        "incidents",
+        "transitions",
+        "diagnoses",
+        "action_results",
+        "verification_results",
+        "reports",
     }
 )
 _ALL_TABLES = _PAYLOAD_TABLES | {"raw_events"}
+_INCIDENT_PAYLOAD_TABLES = frozenset(
+    {"diagnoses", "action_results", "verification_results", "reports"}
+)
 
 
 def _model_json(model: BaseModel) -> str:

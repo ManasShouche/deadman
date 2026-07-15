@@ -4,7 +4,19 @@ from pathlib import Path
 import pytest
 
 from deadman.adapter import parse_jsonl_lines
-from deadman.domain import ProcessObservation, Severity, Signal, SignalKind
+from deadman.domain import (
+    ActionResult,
+    Diagnosis,
+    Incident,
+    IncidentState,
+    ProcessObservation,
+    RecoveryAction,
+    Severity,
+    Signal,
+    SignalKind,
+    VerificationResult,
+)
+from deadman.domain.incident import transition_incident
 from deadman.store import EvidenceStore
 
 
@@ -64,3 +76,61 @@ def test_evidence_store_rejects_unknown_tables(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="unsupported payload table"):
         store.list_payloads("raw_events")
+
+
+def test_evidence_store_persists_incident_lifecycle_records(tmp_path: Path) -> None:
+    store = EvidenceStore(tmp_path / "deadman.sqlite")
+    signal = Signal(
+        kind=SignalKind.HUNG_PROCESS,
+        severity=Severity.CRITICAL,
+        evidence_ids=("proc_1",),
+        fingerprint="hung:101",
+    )
+    incident = Incident(incident_id="inc_1", state=IncidentState.OPEN, signal=signal)
+    incident = transition_incident(
+        incident,
+        to_state=IncidentState.DIAGNOSING,
+        timestamp=1.0,
+        reason="signal opened",
+        actor="deterministic-supervisor",
+        evidence_ids=("proc_1",),
+    )
+    diagnosis = Diagnosis(
+        classification=SignalKind.HUNG_PROCESS,
+        confidence=0.9,
+        recommended_action=RecoveryAction.TERMINATE_DESCENDANT_PROCESS,
+        rationale="idle owned child",
+        evidence_ids=("proc_1",),
+        guidance="terminate child",
+        requires_human_approval=True,
+    )
+    action = ActionResult(
+        action=RecoveryAction.TERMINATE_DESCENDANT_PROCESS,
+        attempted=True,
+        succeeded=True,
+        evidence_ids=("proc_1",),
+        message="terminated",
+    )
+    verification = VerificationResult(
+        resolved=True,
+        changed_progress_fingerprint=True,
+        success_signal="parent progressed",
+        reason="verified",
+    )
+
+    store.add_incident(incident)
+    store.add_transitions(incident.incident_id, incident.transitions)
+    store.add_diagnosis(incident.incident_id, diagnosis)
+    store.add_action_result(incident.incident_id, action)
+    store.add_verification_result(incident.incident_id, verification)
+    store.add_report(incident.incident_id, "incident report")
+
+    assert store.list_payloads("incidents")[0]["incident_id"] == "inc_1"
+    assert store.list_payloads("transitions")[0]["to_state"] == "DIAGNOSING"
+    assert (
+        store.list_payloads("diagnoses")[0]["recommended_action"]
+        == "TERMINATE_DESCENDANT_PROCESS"
+    )
+    assert store.list_payloads("action_results")[0]["succeeded"] is True
+    assert store.list_payloads("verification_results")[0]["resolved"] is True
+    assert store.list_payloads("reports")[0]["report"] == "incident report"
