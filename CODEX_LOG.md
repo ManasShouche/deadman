@@ -29,3 +29,12 @@ This append-only log records how Codex and the developer built Deadman. It is de
 - **Validation:** `deadman`, all three `deadman replay` fixtures, `deadman demo`, `deadman report repeated-failure`, 29 pytest tests, Ruff, mypy, and `git diff --check` pass.
 - **Remaining limitation:** live Codex supervision and real OpenAI Responses API diagnosis are still not wired; the completed path is deterministic offline replay.
 - **Commit links:** `e79a115` progress and budget detectors; `8b98d8e` diagnosis policy decisions; `f163ce3` offline replay demo pipeline.
+
+## 2026-07-15 — Backend recovery core
+
+- **Goal:** continue core implementation while keeping app/CLI polish for last.
+- **Human decisions:** continue implementation and defer app-facing work until the backend pieces are stronger.
+- **Codex contribution:** added bounded recovery executors, checkpoint handoff writing under `.deadman/handoffs/`, subprocess JSONL capture with argument arrays, structured OpenAI Responses API diagnosis parsing, workspace progress fingerprinting, incident state transitions with a two-attempt cap, and expanded SQLite lifecycle persistence.
+- **Validation:** `deadman demo`, 46 pytest tests, Ruff, mypy, and `git diff --check` pass.
+- **Remaining limitation:** the CLI still exposes only replay/demo/report; live `deadman run` wiring is intentionally deferred until the app-facing slice.
+- **Commit links:** `5366cc8` bounded recovery executors; `3f7739b` supervised subprocess JSONL capture; `c56c5f1` structured OpenAI diagnosis client; `c33c90b` workspace progress fingerprint; `d4b2de1` incident state machine; `44930ae` incident lifecycle persistence.
