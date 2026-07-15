@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"019f64d0-696b-7850-859b-5f15d6acc6e3"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"DEADMAN_GATE_A_OK"}}
+{"type":"turn.completed","usage":{"input_tokens":16459,"cached_input_tokens":9984,"output_tokens":10,"reasoning_output_tokens":0}}
