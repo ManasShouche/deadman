@@ -25,6 +25,16 @@ class SignalKind(StrEnum):
     SESSION_BUDGET_RISK = "SESSION_BUDGET_RISK"
 
 
+class RecoveryAction(StrEnum):
+    """Bounded recovery actions from the spec."""
+
+    OBSERVE = "OBSERVE"
+    TERMINATE_DESCENDANT_PROCESS = "TERMINATE_DESCENDANT_PROCESS"
+    CANCEL_AND_RESUME = "CANCEL_AND_RESUME"
+    CHECKPOINT_AND_RESPAWN = "CHECKPOINT_AND_RESPAWN"
+    HALT_AND_ESCALATE = "HALT_AND_ESCALATE"
+
+
 class RawAdapterEvent(BaseModel):
     """One raw JSONL line retained from the Codex adapter."""
 
@@ -127,3 +137,27 @@ class UsageObservation(BaseModel):
     used_units: int
     budget_units: int
     manual_checkpoint_requested: bool = False
+
+
+class Diagnosis(BaseModel):
+    """Validated model or fixture recommendation."""
+
+    model_config = ConfigDict(frozen=True)
+
+    classification: SignalKind
+    confidence: float = Field(ge=0.0, le=1.0)
+    recommended_action: RecoveryAction
+    rationale: str
+    evidence_ids: tuple[str, ...]
+    guidance: str
+    requires_human_approval: bool
+
+
+class PolicyDecision(BaseModel):
+    """Deterministic authorization result for a diagnosis."""
+
+    model_config = ConfigDict(frozen=True)
+
+    allowed: bool
+    action: RecoveryAction
+    reason: str
