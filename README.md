@@ -45,6 +45,10 @@ The no-argument `deadman` command reports the baseline status. `deadman replay` 
 
 Deadman never gives a model shell access or direct process/session control. Deterministic code owns observation, policy enforcement, execution, and verification; GPT-5.6 can recommend only typed, evidence-bound actions.
 
+## Scope decisions
+
+The MVP is a Python terminal wrapper. Rust is a future option for a native wrapper/TUI shell once the behavior is stable. A Codex plugin/MCP companion is also roadmap-only; it should not own recovery because it cannot supervise a Codex session that is already stuck.
+
 ## Adapter evidence
 
 `scenarios/recordings/` holds replay fixtures and approved harmless compatibility captures. The capture's capability report documents only fields observed from the installed Codex CLI; it never assumes an undocumented event schema or hidden context-window telemetry.

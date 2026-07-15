@@ -7,6 +7,7 @@ name = "deadman"
 version = "0.0.0"
 description = "A local recovery harness for Codex sessions."
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.11"
 dependencies = [
   "openai>=2,<3",

@@ -44,6 +44,8 @@ The product has three layers:
 
 The initial product is a **terminal wrapper**, not a Codex plugin. A wrapper owns the launched process tree and works even when the supervised Codex session cannot call an MCP tool. A Codex plugin/MCP companion is roadmap-only.
 
+The MVP implementation remains Python. Rust is a strong future option for a native wrapper/TUI and process-supervision shell, but it is not part of the Build Week MVP rewrite. If Rust is added later, it should start as a thin `clap` + `ratatui`/`crossterm` frontend around the existing JSON/SQLite contract rather than replacing the tested detector, policy, and diagnosis core immediately.
+
 ## 3. Evidence model and compatibility gates
 
 ### Runtime invocation
@@ -175,8 +177,9 @@ The policy engine rejects a response when it names unknown evidence, an unavaila
 | Persistence | SQLite (`sqlite3`) | Zero-infrastructure incident store and replay source |
 | Model client | Official OpenAI Python SDK / Responses API | GPT-5.6 structured diagnosis and handoff generation |
 | Tests | pytest | Fast unit, fixture, and scenario tests |
+| Future native shell | Rust (`clap`, `ratatui`, `crossterm`) | Roadmap option for a single-binary wrapper/TUI after MVP behavior is stable |
 
-No Docker, web dashboard, Postgres, background service, login system, cloud deployment, Slack integration, or Codex plugin belongs in the MVP.
+No Docker, web dashboard, Postgres, background service, login system, cloud deployment, Slack integration, Rust rewrite, or Codex plugin belongs in the MVP.
 
 ### Components
 
@@ -325,6 +328,7 @@ Do not display unmeasured "tokens saved," a fabricated context percentage, an au
 | --- | --- | --- |
 | Naming | Finalize **Deadman**; remove alternatives | Preserves momentum and prevents branding churn. |
 | Form factor | Local wrapper first; plugin/MCP deferred | The external supervisor owns the failure domain and is credible on the deadline. |
+| Rust | Defer Rust to a future native shell | Rust is attractive for process supervision and distribution, but a rewrite would add deadline risk; Python remains fastest for the MVP core and OpenAI SDK integration. |
 | Telemetry | Capability-gated; no transcript-byte context estimate | Avoids claiming hidden context-window data that may not be emitted by the CLI. |
 | Detectors | Reduce from six to four | Prioritizes recovery, verification, and reproducible demos over taxonomy breadth. |
 | Automation | Approval by default; auto-recovery requires explicit flag | Safer and more believable for process/session control. |

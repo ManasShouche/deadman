@@ -54,4 +54,11 @@ This append-only log records how Codex and the developer built Deadman. It is de
 - **Human decisions:** user clarified that a print-only CLI demo was not enough.
 - **Codex contribution:** added Rich panel/table renderers for demo, replay, report, and run output while preserving the existing backend pipeline.
 - **Validation:** 52 pytest tests, Ruff, mypy, `deadman demo`, and `deadman run` smoke pass.
-- **Commit links:** pending at time of entry.
+- **Commit links:** `6ec4484` Rich terminal app surface.
+
+## 2026-07-15 — Scope finalization
+
+- **Goal:** reconcile the spec with implementation decisions and final submission materials.
+- **Human decisions:** keep Python for the MVP, defer Rust to a future native wrapper/TUI shell, and keep Codex plugin/MCP companion roadmap-only.
+- **Codex contribution:** updated `spec.md` with the Rust decision and added MIT licensing material.
+- **Validation:** editable install, 52 pytest tests, Ruff, mypy, `deadman demo`, and `deadman run` smoke pass.
