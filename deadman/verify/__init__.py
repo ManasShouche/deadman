@@ -1,0 +1,1 @@
+"""Deterministic post-recovery verification."""

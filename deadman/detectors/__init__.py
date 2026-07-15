@@ -1,0 +1,1 @@
+"""Pure pathological-state detectors."""
