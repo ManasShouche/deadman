@@ -9,6 +9,12 @@ import psutil
 from deadman.domain import ProcessObservation
 
 PROTECTED_PIDS = frozenset({0, 1})
+PROCESS_LOOKUP_ERRORS = (
+    psutil.NoSuchProcess,
+    psutil.AccessDenied,
+    psutil.ZombieProcess,
+    PermissionError,
+)
 
 
 class ProcessMonitor:
@@ -28,7 +34,7 @@ class ProcessMonitor:
         try:
             process = psutil.Process(pid)
             parents = process.parents()
-        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+        except PROCESS_LOOKUP_ERRORS:
             return False
 
         return any(parent.pid == self.root_pid for parent in parents)
@@ -54,7 +60,7 @@ class ProcessMonitor:
             command_line = tuple(process.cmdline())
             is_running = process.is_running() and process.status() != psutil.STATUS_ZOMBIE
             listening_ports = _listening_ports(process)
-        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+        except PROCESS_LOOKUP_ERRORS:
             parent_pid = None
             command_line = ()
             is_running = False
@@ -80,7 +86,7 @@ def _listening_ports(process: psutil.Process) -> tuple[int, ...]:
     ports: list[int] = []
     try:
         connections = process.net_connections(kind="inet")
-    except (psutil.AccessDenied, psutil.NoSuchProcess, psutil.ZombieProcess):
+    except PROCESS_LOOKUP_ERRORS:
         return ()
 
     for connection in connections:

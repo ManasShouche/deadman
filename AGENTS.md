@@ -14,6 +14,6 @@
 - Make small changes with focused tests. Run `pytest`, `ruff check .`, and `mypy .` before handing work off.
 - Add a concise entry to `CODEX_LOG.md` for material implementation, validation, and human decisions.
 
-## D0 status
+## Current status
 
-The repository currently provides only the build skeleton and adapter evidence capture. No detector, recovery action, or live intervention command is implemented until its corresponding fixture and tests exist.
+The repository now includes the deterministic MVP core: adapter evidence capture, replay fixtures, pure detectors, policy checks, bounded recovery executors, verification, SQLite persistence, terminal reports, and a live `deadman run` hung-child recovery path. New intervention behavior still needs a fixture and focused tests before being treated as supported.

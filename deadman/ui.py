@@ -71,6 +71,14 @@ def render_run_summary(summary: RunSummary) -> Panel:
     table.add_row("Raw events", str(summary.raw_event_count))
     table.add_row("Normalized events", str(summary.normalized_event_count))
     table.add_row("Session ID", summary.session_id or "unknown")
+    if summary.signal_kind is not None:
+        table.add_row("Signal", summary.signal_kind.value)
+    if summary.recommended_action is not None:
+        table.add_row("Action", summary.recommended_action.value)
+    if summary.policy_allowed is not None:
+        table.add_row("Policy", "allowed" if summary.policy_allowed else "blocked")
+    if summary.verification_resolved is not None:
+        table.add_row("Verification", "RESOLVED" if summary.verification_resolved else "ESCALATED")
     table.add_row("SQLite", summary.database_path)
     return Panel(table, title="Deadman run", border_style="green")
 

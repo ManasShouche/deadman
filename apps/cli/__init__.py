@@ -7,6 +7,7 @@ import typer
 from rich.console import Console
 
 from deadman.detectors.replay import replay_fixture
+from deadman.diagnosis import FakeDiagnosisClient, build_default_openai_diagnosis_client
 from deadman.report import render_incident_report
 from deadman.run import run_supervised_command
 from deadman.ui import (
@@ -77,17 +78,53 @@ def run(
         float | None,
         typer.Option("--timeout", help="Optional supervised command timeout in seconds."),
     ] = None,
+    hung_timeout: Annotated[
+        float | None,
+        typer.Option(
+            "--hung-timeout",
+            help="Enable live hung-child detection after this many idle seconds.",
+        ),
+    ] = None,
+    auto_recover: Annotated[
+        bool,
+        typer.Option(
+            "--auto-recover",
+            help="Allow policy-approved deterministic recovery actions without prompting.",
+        ),
+    ] = False,
+    diagnosis: Annotated[
+        str,
+        typer.Option(
+            "--diagnosis",
+            help="Diagnosis backend for live incidents: fake or openai.",
+        ),
+    ] = "fake",
+    model: Annotated[
+        str,
+        typer.Option("--model", help="OpenAI model used when --diagnosis openai is selected."),
+    ] = "gpt-5.6",
 ) -> None:
     """Run and record a supervised command after --."""
     argv = tuple(ctx.args)
     if not argv:
         raise typer.BadParameter("provide a command after --")
+    if diagnosis not in {"fake", "openai"}:
+        raise typer.BadParameter("--diagnosis must be fake or openai")
+
+    diagnosis_client = (
+        build_default_openai_diagnosis_client(model=model)
+        if diagnosis == "openai"
+        else FakeDiagnosisClient()
+    )
 
     summary = run_supervised_command(
         argv,
         workspace=Path.cwd(),
         database_path=database,
         timeout_seconds=timeout,
+        auto_recover=auto_recover,
+        hung_timeout_seconds=hung_timeout,
+        diagnosis_client=diagnosis_client,
     )
     console.print(render_run_summary(summary))
 

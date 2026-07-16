@@ -62,3 +62,10 @@ This append-only log records how Codex and the developer built Deadman. It is de
 - **Human decisions:** keep Python for the MVP, defer Rust to a future native wrapper/TUI shell, and keep Codex plugin/MCP companion roadmap-only.
 - **Codex contribution:** updated `spec.md` with the Rust decision and added MIT licensing material.
 - **Validation:** editable install, 52 pytest tests, Ruff, mypy, `deadman demo`, and `deadman run` smoke pass.
+
+## 2026-07-16 — Live hung-child recovery path
+
+- **Goal:** close the main spec gap so local testing can exercise a live observe -> detect -> diagnose -> recover -> verify loop.
+- **Human decisions:** complete the project enough for testing, while preserving the approval-by-default safety rule.
+- **Codex contribution:** added `deadman run --hung-timeout` live process-tree monitoring, `--auto-recover` policy-gated descendant termination, optional `--diagnosis openai --model gpt-5.6`, richer run summaries, focused live recovery tests, and refreshed README/AGENTS status.
+- **Validation:** focused run/CLI tests passed during implementation; full validation recorded at handoff.

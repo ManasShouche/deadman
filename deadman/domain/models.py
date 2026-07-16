@@ -224,6 +224,11 @@ class RunSummary(BaseModel):
     session_id: str | None
     status: str
     report: str
+    incident_id: str | None = None
+    signal_kind: SignalKind | None = None
+    recommended_action: RecoveryAction | None = None
+    policy_allowed: bool | None = None
+    verification_resolved: bool | None = None
 
 
 class StateTransition(BaseModel):

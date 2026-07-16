@@ -11,6 +11,13 @@ import psutil
 from deadman.domain import ActionResult, RecoveryAction
 from deadman.monitor import PROTECTED_PIDS, ProcessMonitor
 
+PROCESS_LOOKUP_ERRORS = (
+    psutil.NoSuchProcess,
+    psutil.AccessDenied,
+    psutil.ZombieProcess,
+    PermissionError,
+)
+
 
 def terminate_descendant_process(
     *,
@@ -31,7 +38,7 @@ def terminate_descendant_process(
 
     try:
         process = psutil.Process(target_pid)
-    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+    except PROCESS_LOOKUP_ERRORS:
         return _result(False, False, evidence_id, "target process is not live")
 
     if not monitor.is_descendant(target_pid):
@@ -47,7 +54,7 @@ def terminate_descendant_process(
         process.kill()
         process.wait(timeout=terminate_timeout_seconds)
         return _result(True, True, evidence_id, "killed descendant process after timeout")
-    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess) as exc:
+    except PROCESS_LOOKUP_ERRORS as exc:
         return _result(True, False, evidence_id, f"termination failed: {exc}")
 
 
