@@ -11,7 +11,9 @@ from rich.table import Table
 from rich.text import Text
 
 from deadman.adapter import SessionCandidate
+from deadman.attach import LiveCodexProcess
 from deadman.domain import ReplayIncident, RunSummary, WatchSnapshot
+from deadman.recovery import RecoveryOutcome
 
 
 def render_demo_dashboard(incidents: Iterable[ReplayIncident]) -> Panel:
@@ -133,6 +135,55 @@ def render_watch_snapshot(snapshot: WatchSnapshot) -> Panel:
     table.add_row("Last progress", "not yet measured")
     table.add_row("Ownership", snapshot.ownership.value)
     return Panel(table, title="Deadman watch", border_style="yellow")
+
+
+def render_live_codex_processes(processes: Iterable[LiveCodexProcess]) -> Panel:
+    """Render discovered live Codex processes eligible for attach recovery."""
+
+    table = Table(expand=True)
+    table.add_column("#", justify="right", style="cyan")
+    table.add_column("PID", justify="right")
+    table.add_column("Session")
+    table.add_column("Working directory")
+    table.add_column("Started")
+    for index, process in enumerate(processes, start=1):
+        table.add_row(
+            str(index),
+            str(process.pid),
+            process.session_id or "unlinked",
+            str(process.cwd),
+            datetime.fromtimestamp(process.create_time).astimezone().strftime("%H:%M:%S")
+            if process.create_time
+            else "unknown",
+        )
+    return Panel(table, title="Live Codex processes in this repo", border_style="cyan")
+
+
+def render_recovery_outcome(outcome: RecoveryOutcome) -> Panel:
+    """Render one attach/agent recovery incident result."""
+
+    colors = {"recovered": "green", "awaiting_approval": "yellow", "escalated": "red"}
+    border = colors.get(outcome.status, "yellow")
+    table = Table.grid(padding=(0, 1))
+    table.add_column(style="cyan", no_wrap=True)
+    table.add_column()
+    table.add_row("Status", outcome.status)
+    table.add_row("Signal", outcome.signal.kind.value)
+    table.add_row("Hung pid", str(outcome.signal.details.get("pid")))
+    table.add_row("Recommended", outcome.diagnosis.recommended_action.value)
+    table.add_row("Policy", "allowed" if outcome.policy.allowed else outcome.policy.reason)
+    if outcome.action_result is not None:
+        table.add_row("Action", outcome.action_result.message)
+    if outcome.verification is not None:
+        table.add_row(
+            "Verification",
+            "resolved" if outcome.verification.resolved else "escalated",
+        )
+        table.add_row("Reason", outcome.verification.reason)
+    if outcome.incident is not None:
+        table.add_row("Incident", outcome.incident.incident_id)
+        table.add_row("Final state", outcome.incident.state.value)
+    return Panel(table, title="Deadman recovery", border_style=border)
 
 
 def _title() -> Text:

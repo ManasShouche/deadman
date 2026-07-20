@@ -51,11 +51,13 @@ def terminate_descendant_process(
     try:
         _terminate_processes(targets)
         _, alive = psutil.wait_procs(targets, timeout=terminate_timeout_seconds)
+        alive = _prune_dead(alive)
         if alive:
             if not monitor.is_descendant(target_pid):
                 return _result(True, False, evidence_id, "target ancestry changed before kill")
             _kill_processes(alive)
             _, alive = psutil.wait_procs(alive, timeout=terminate_timeout_seconds)
+            alive = _prune_dead(alive)
         if alive:
             return _result(True, False, evidence_id, "target subtree did not exit after kill")
         if len(targets) == 1:
@@ -150,6 +152,24 @@ def _kill_processes(processes: list[psutil.Process]) -> None:
             process.kill()
         except PROCESS_LOOKUP_ERRORS:
             pass
+
+
+def _prune_dead(processes: list[psutil.Process]) -> list[psutil.Process]:
+    """Drop processes that are gone or lingering as unreaped zombies.
+
+    When Deadman is not the target's parent it cannot reap it, so a terminated
+    child stays a zombie until its real parent (for example Codex) reaps it. A
+    zombie is already dead, so it must not count as a surviving descendant.
+    """
+
+    live: list[psutil.Process] = []
+    for process in processes:
+        try:
+            if process.is_running() and process.status() != psutil.STATUS_ZOMBIE:
+                live.append(process)
+        except PROCESS_LOOKUP_ERRORS:
+            continue
+    return live
 
 
 def _safe_name(value: str) -> str:

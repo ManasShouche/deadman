@@ -1,5 +1,6 @@
 """The current Deadman command-line entry point."""
 
+import os
 import sys
 from pathlib import Path
 from typing import Annotated
@@ -10,15 +11,23 @@ from rich.table import Table
 
 from deadman.adapter import discover_cli_sessions, select_cli_session
 from deadman.agent import run_agent_cli
+from deadman.attach import (
+    LiveCodexProcess,
+    discover_live_codex_processes,
+    run_attach_supervisor,
+)
 from deadman.config import load_openai_credentials
 from deadman.detectors.replay import replay_fixture
 from deadman.diagnosis import FakeDiagnosisClient, build_default_openai_diagnosis_client
 from deadman.paths import default_database_path, project_root
+from deadman.recovery import DiagnosisClient
 from deadman.report import render_incident_report
 from deadman.run import run_supervised_command
 from deadman.store import EvidenceStore
 from deadman.ui import (
     render_demo_dashboard,
+    render_live_codex_processes,
+    render_recovery_outcome,
     render_replay_result,
     render_report_panel,
     render_run_summary,
@@ -205,6 +214,87 @@ def agent(
 
 
 @app.command()
+def attach(
+    pid: Annotated[
+        int | None,
+        typer.Option("--pid", help="Attach to a specific Codex PID instead of prompting."),
+    ] = None,
+    database: Annotated[
+        Path | None,
+        typer.Option(
+            "--database",
+            help="SQLite database path. Defaults to .deadman/deadman.sqlite.",
+        ),
+    ] = None,
+    hung_timeout: Annotated[
+        float,
+        typer.Option("--hung-timeout", help="Idle seconds before a descendant is hung."),
+    ] = 60.0,
+    auto_recover: Annotated[
+        bool,
+        typer.Option(
+            "--auto-recover",
+            help="Terminate proven hung descendants of the attached Codex process.",
+        ),
+    ] = False,
+    diagnosis: Annotated[
+        str,
+        typer.Option("--diagnosis", help="Diagnosis backend: auto, fake, or openai."),
+    ] = "auto",
+    model: Annotated[
+        str,
+        typer.Option("--model", help="OpenAI model used when --diagnosis openai is selected."),
+    ] = "gpt-5.6",
+    poll_interval: Annotated[
+        float,
+        typer.Option("--poll-interval", help="Seconds between descendant observations."),
+    ] = 0.5,
+) -> None:
+    """Attach to a Codex session started in another terminal in this repository."""
+
+    if poll_interval <= 0:
+        raise typer.BadParameter("--poll-interval must be greater than zero")
+    workspace = project_root(Path.cwd())
+    db_path = database or default_database_path(workspace)
+    _print_startup(db_path, auto_recover=auto_recover)
+
+    processes = discover_live_codex_processes(
+        workspace,
+        exclude_pids=frozenset({os.getpid(), os.getppid()}),
+    )
+    if not processes:
+        raise typer.BadParameter(
+            "no live Codex process found in this repository; start Codex here first"
+        )
+
+    selected = _select_live_process(processes, pid=pid)
+    console.print(render_live_codex_processes([selected]))
+    if not auto_recover:
+        console.print(
+            "[deadman] approval mode: hung descendants are reported, not terminated. "
+            "Re-run with --auto-recover to act."
+        )
+
+    diagnosis_client = _resolve_diagnosis_client(workspace, diagnosis=diagnosis, model=model)
+    try:
+        incidents = run_attach_supervisor(
+            selected,
+            workspace=workspace,
+            database_path=db_path,
+            diagnosis_client=diagnosis_client,
+            hung_timeout_seconds=hung_timeout,
+            auto_recover=auto_recover,
+            poll_interval_seconds=poll_interval,
+            on_status=lambda message: console.print(f"[deadman] {message}"),
+            on_recovery=lambda outcome: console.print(render_recovery_outcome(outcome)),
+        )
+    except KeyboardInterrupt:
+        console.print("[deadman] detached; Codex session left running")
+        return
+    console.print(f"[deadman] supervision ended; incidents opened: {incidents}")
+
+
+@app.command()
 def watch(
     session: Annotated[
         str | None,
@@ -301,3 +391,44 @@ def _demo_fixtures() -> tuple[Path, ...]:
 def _print_startup(database_path: Path, *, auto_recover: bool) -> None:
     typer.echo(f"SQLite: {database_path}")
     typer.echo(f"Auto recover: {'on' if auto_recover else 'off'}")
+
+
+def _select_live_process(
+    processes: tuple[LiveCodexProcess, ...],
+    *,
+    pid: int | None,
+) -> LiveCodexProcess:
+    if pid is not None:
+        for process in processes:
+            if process.pid == pid:
+                return process
+        raise typer.BadParameter(f"pid {pid} is not a live Codex process in this repository")
+    if len(processes) == 1:
+        return processes[0]
+    if not sys.stdin.isatty():
+        pids = ", ".join(str(process.pid) for process in processes[:10])
+        raise typer.BadParameter(f"multiple Codex processes found; pass --pid. Candidates: {pids}")
+    console.print(render_live_codex_processes(processes[:10]))
+    choice: int = typer.prompt("Process number", type=int)
+    if choice < 1 or choice > min(len(processes), 10):
+        raise typer.BadParameter("process number is outside the displayed range")
+    return processes[choice - 1]
+
+
+def _resolve_diagnosis_client(
+    workspace: Path,
+    *,
+    diagnosis: str,
+    model: str,
+) -> DiagnosisClient:
+    if diagnosis not in {"auto", "fake", "openai"}:
+        raise typer.BadParameter("--diagnosis must be auto, fake, or openai")
+    credentials = load_openai_credentials(workspace)
+    use_openai = diagnosis == "openai" or (diagnosis == "auto" and credentials.available)
+    if diagnosis == "openai" and not credentials.available:
+        raise typer.BadParameter(
+            "live OpenAI diagnosis requires OPENAI_API_KEY in the environment or project .env"
+        )
+    if use_openai:
+        return build_default_openai_diagnosis_client(model=model)
+    return FakeDiagnosisClient()

@@ -23,8 +23,6 @@ from deadman.domain import (
     ActionResult,
     DetectorConfig,
     Diagnosis,
-    Incident,
-    IncidentState,
     NormalizedEvent,
     PolicyDecision,
     ProcessObservation,
@@ -33,8 +31,8 @@ from deadman.domain import (
     Signal,
     VerificationResult,
 )
-from deadman.domain.incident import transition_incident
 from deadman.executor import terminate_descendant_process
+from deadman.incidents import incident_id_for, record_recovery_incident
 from deadman.paths import default_database_path, project_root
 from deadman.policy import PolicyEngine
 from deadman.store import EvidenceStore
@@ -562,8 +560,7 @@ def _live_report(
 def _incident_id(signal: Signal | None) -> str | None:
     if signal is None:
         return None
-    suffix = signal.fingerprint.split(":", maxsplit=1)[-1]
-    return f"live-{signal.kind.value.lower()}-{suffix}"
+    return incident_id_for(signal)
 
 
 def _maybe_resume_after_recovery(
@@ -744,97 +741,14 @@ def _persist_live_incident(
     final_verification_resolved: bool | None,
     report: str,
 ) -> None:
-    if signal is None or diagnosis is None or policy is None:
-        return
-
-    incident = Incident(
-        incident_id=_incident_id(signal) or f"live-{signal.fingerprint}",
-        state=IncidentState.OPEN,
+    record_recovery_incident(
+        store,
+        session_id=session_id,
         signal=signal,
-    )
-    timestamp = time.time()
-    incident = transition_incident(
-        incident,
-        to_state=IncidentState.DIAGNOSING,
-        timestamp=timestamp,
-        reason="deterministic signal opened incident",
-        actor="deadman-supervisor",
-        evidence_ids=signal.evidence_ids,
-    )
-    if not policy.allowed:
-        incident = transition_incident(
-            incident,
-            to_state=IncidentState.AWAITING_APPROVAL,
-            timestamp=timestamp,
-            reason=policy.reason,
-            actor="policy-engine",
-            evidence_ids=signal.evidence_ids,
-        )
-    elif action_result is None:
-        incident = transition_incident(
-            incident,
-            to_state=IncidentState.ESCALATED,
-            timestamp=timestamp,
-            reason="no supported live action was executed",
-            actor="deadman-supervisor",
-            evidence_ids=signal.evidence_ids,
-        )
-    else:
-        incident = transition_incident(
-            incident,
-            to_state=IncidentState.RECOVERING,
-            timestamp=timestamp,
-            reason="policy authorized bounded action",
-            actor="policy-engine",
-            evidence_ids=action_result.evidence_ids,
-            action_fingerprint=f"action:{signal.fingerprint}",
-        )
-        if verification is None:
-            incident = transition_incident(
-                incident,
-                to_state=IncidentState.ESCALATED,
-                timestamp=timestamp,
-                reason="recovery produced no verification evidence",
-                actor="deterministic-verifier",
-                evidence_ids=action_result.evidence_ids,
-            )
-        else:
-            incident = transition_incident(
-                incident,
-                to_state=IncidentState.VERIFYING,
-                timestamp=timestamp,
-                reason="bounded action completed",
-                actor="deadman-supervisor",
-                evidence_ids=action_result.evidence_ids,
-            )
-            incident = transition_incident(
-                incident,
-                to_state=(
-                    IncidentState.RESOLVED
-                    if final_verification_resolved
-                    else IncidentState.ESCALATED
-                ),
-                timestamp=timestamp,
-                reason=(
-                    "measurable progress verified"
-                    if final_verification_resolved
-                    else "verification evidence was insufficient"
-                ),
-                actor="deterministic-verifier",
-                evidence_ids=action_result.evidence_ids,
-            )
-
-    store.add_incident(incident, session_id=session_id)
-    store.add_transitions(incident.incident_id, incident.transitions)
-    store.add_canonical_transitions(
-        incident,
+        diagnosis=diagnosis,
         policy=policy,
         action_result=action_result,
+        verification=verification,
+        report=report,
+        final_resolved=final_verification_resolved,
     )
-    store.add_diagnosis(incident.incident_id, diagnosis)
-    store.add_policy_decision(incident.incident_id, policy)
-    if action_result is not None:
-        store.add_action_result(incident.incident_id, action_result)
-    if verification is not None:
-        store.add_verification_result(incident.incident_id, verification)
-    store.add_report(incident.incident_id, report)

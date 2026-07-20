@@ -14,20 +14,18 @@ import tty
 from collections.abc import Sequence
 from pathlib import Path
 
-import psutil
-
-from deadman.detectors import detect_hung_process
-from deadman.domain import DetectorConfig, ProcessObservation, Signal
-from deadman.executor import terminate_descendant_process
+from deadman.diagnosis import FakeDiagnosisClient
+from deadman.domain import (
+    ProcessObservation,
+    SessionMode,
+    SessionOwnership,
+    SessionRecord,
+)
+from deadman.monitor import DescendantTracker
 from deadman.paths import default_database_path, project_root
+from deadman.recovery import DiagnosisClient, recover_hung_descendant
 from deadman.store import EvidenceStore
 
-PROCESS_LOOKUP_ERRORS = (
-    psutil.NoSuchProcess,
-    psutil.AccessDenied,
-    psutil.ZombieProcess,
-    PermissionError,
-)
 STATUS_INTERVAL_SECONDS = 10.0
 
 
@@ -38,6 +36,7 @@ def run_agent_cli(
     database_path: Path | None = None,
     hung_timeout_seconds: float = 60.0,
     auto_recover: bool = False,
+    diagnosis_client: DiagnosisClient | None = None,
 ) -> int:
     """Run an interactive CLI in a PTY while supervising its process tree."""
 
@@ -47,6 +46,7 @@ def run_agent_cli(
     root = project_root(workspace)
     db_path = database_path or default_database_path(root)
     store = EvidenceStore(db_path)
+    diagnostician = diagnosis_client or FakeDiagnosisClient()
     columns, rows = _terminal_size()
     child_pid, master_fd = pty.fork()
     if child_pid == 0:
@@ -68,11 +68,23 @@ def run_agent_cli(
         old_tty = termios.tcgetattr(stdin_fd)
         tty.setraw(stdin_fd)
 
-    last_output_at = time.monotonic()
-    first_seen_by_pid: dict[int, float] = {}
-    ignored_pids: set[int] = set()
+    session_started_at = time.time()
+    session_id = f"agent:{child_pid}"
+    store.upsert_session(
+        SessionRecord(
+            session_id=session_id,
+            mode=SessionMode.MANAGED,
+            source="agent_pty",
+            cwd=str(root),
+            ownership=SessionOwnership.MANAGED,
+            status="supervising",
+            started_at=session_started_at,
+            last_seen_at=session_started_at,
+        )
+    )
+
     last_status_at = 0.0
-    observations: list[ProcessObservation] = []
+    tracker = DescendantTracker(child_pid, hung_timeout_seconds=hung_timeout_seconds)
     recovered_fingerprints: set[str] = set()
 
     try:
@@ -95,57 +107,39 @@ def run_agent_cli(
                     return _wait_exit_code(child_pid)
                 if output:
                     _write_output(stdout_fd, output)
-                    last_output_at = now
 
             if stdin_fd is not None and stdin_fd in readable:
                 user_input = os.read(stdin_fd, 4096)
                 if user_input:
                     os.write(master_fd, user_input)
 
-            signal = _detect_hung_descendant(
-                root_pid=child_pid,
-                now=now,
-                last_output_at=last_output_at,
-                timeout_seconds=hung_timeout_seconds,
-                observations=observations,
-                first_seen_by_pid=first_seen_by_pid,
-                ignored_pids=ignored_pids,
-            )
+            signal = tracker.poll(now)
             if now - last_status_at >= STATUS_INTERVAL_SECONDS:
-                _persist_recent_observations(store, observations)
-                watched_count = len(
-                    {
-                        observation.pid
-                        for observation in observations[-len(first_seen_by_pid) :]
-                        if observation.is_descendant and observation.pid not in ignored_pids
-                    }
-                )
+                _persist_recent_observations(store, tracker.observations, session_id)
                 _write_status(
-                    f"\n[deadman] monitoring {watched_count} owned descendant(s); "
-                    f"ignored baseline={len(ignored_pids)}\n"
+                    f"\n[deadman] monitoring {tracker.watched_count()} owned descendant(s); "
+                    f"ignored baseline={len(tracker.ignored_pids)}\n"
                 )
                 last_status_at = now
             if signal is None or signal.fingerprint in recovered_fingerprints:
                 continue
 
-            _persist_recent_observations(store, observations)
-            store.add_signals((signal,))
+            _persist_recent_observations(store, tracker.observations, session_id)
+            store.add_signals((signal,), session_id=session_id)
             recovered_fingerprints.add(signal.fingerprint)
             _write_status(
                 f"\n[deadman] HUNG_PROCESS detected for pid {signal.details['pid']}\n"
             )
-            if not auto_recover:
-                _write_status("[deadman] auto recovery disabled; leaving session running\n")
-                continue
-
-            result = terminate_descendant_process(
+            outcome = recover_hung_descendant(
+                store,
+                session_id=session_id,
                 root_pid=child_pid,
-                target_pid=int(signal.details["pid"]),
-                evidence_id=signal.evidence_ids[0],
+                signal=signal,
+                diagnosis_client=diagnostician,
+                auto_recover=auto_recover,
+                mode="agent",
             )
-            store.add_action_result(signal.fingerprint, result)
-            _write_status(f"[deadman] {result.message}\n")
-            last_output_at = time.monotonic()
+            _write_status(f"[deadman] {outcome.status}: {outcome.message}\n")
     finally:
         signal_module.signal(signal_module.SIGWINCH, old_sigwinch)
         if old_tty is not None and stdin_fd is not None:
@@ -156,127 +150,17 @@ def run_agent_cli(
             pass
 
 
-def _detect_hung_descendant(
-    *,
-    root_pid: int,
-    now: float,
-    last_output_at: float,
-    timeout_seconds: float,
-    observations: list[ProcessObservation],
-    first_seen_by_pid: dict[int, float],
-    ignored_pids: set[int],
-) -> Signal | None:
-    descendants = _live_descendant_pids(root_pid)
-    eligible_observations: list[ProcessObservation] = []
-    for pid in descendants:
-        first_seen_at = first_seen_by_pid.setdefault(pid, now)
-        observation = _observe_descendant(
-            root_pid=root_pid,
-            pid=pid,
-            observed_at=now,
-            first_seen_at=first_seen_at,
-        )
-        observations.append(observation)
-        if pid in ignored_pids:
-            continue
-        if _is_baseline_descendant(observation):
-            ignored_pids.add(pid)
-            continue
-        eligible_observations.append(observation)
-    stale_pids = set(first_seen_by_pid) - set(descendants)
-    for pid in stale_pids:
-        first_seen_by_pid.pop(pid, None)
-        ignored_pids.discard(pid)
-    return detect_hung_process(
-        eligible_observations,
-        now=now,
-        config=DetectorConfig(hung_timeout_seconds=timeout_seconds),
-    )
-
-
-def _live_descendant_pids(root_pid: int) -> tuple[int, ...]:
-    try:
-        root = psutil.Process(root_pid)
-        return tuple(child.pid for child in root.children(recursive=True) if child.is_running())
-    except PROCESS_LOOKUP_ERRORS:
-        return ()
-
-
-def _observe_descendant(
-    *,
-    root_pid: int,
-    pid: int,
-    observed_at: float,
-    first_seen_at: float,
-) -> ProcessObservation:
-    try:
-        process = psutil.Process(pid)
-        parent_pid = process.ppid()
-        command_line = tuple(process.cmdline())
-        is_running = process.is_running() and process.status() != psutil.STATUS_ZOMBIE
-        is_descendant = parent_pid == root_pid or any(
-            parent.pid == root_pid for parent in process.parents()
-        )
-    except PROCESS_LOOKUP_ERRORS:
-        parent_pid = None
-        command_line = ()
-        is_running = False
-        is_descendant = False
-
-    return ProcessObservation(
-        evidence_id=f"agent_proc_{pid}_{int(observed_at * 1000)}",
-        root_pid=root_pid,
-        pid=pid,
-        parent_pid=parent_pid,
-        command_line=command_line,
-        is_running=is_running,
-        is_descendant=is_descendant,
-        observed_at=observed_at,
-        last_stdout_at=first_seen_at,
-        last_stderr_at=first_seen_at,
-    )
-
-
-def _is_baseline_descendant(observation: ProcessObservation) -> bool:
-    command_line = observation.command_line
-    executable = _executable_name(command_line)
-    # The interactive Codex process carries the user's prompt in argv. Never
-    # classify it from arbitrary prompt text such as "run Python".
-    if executable == "codex":
-        return True
-    if _looks_like_user_command(command_line):
-        return False
-    return (
-        executable in {"node_repl", "codex-code-mode-host"}
-        or "mcp/server.mjs" in command_line
-    )
-
-
-def _looks_like_user_command(command_line: tuple[str, ...]) -> bool:
-    executable = _executable_name(command_line)
-    if executable in {"pytest", "npm", "bash", "zsh", "sh", "curl", "sleep"}:
-        return True
-    if "python" in executable:
-        return True
-    return executable == "node" and "-e" in command_line[1:]
-
-
-def _executable_name(command_line: tuple[str, ...]) -> str:
-    if not command_line:
-        return ""
-    return Path(command_line[0]).name.lower()
-
-
 def _persist_recent_observations(
     store: EvidenceStore,
     observations: list[ProcessObservation],
+    session_id: str,
 ) -> None:
     if not observations:
         return
     by_pid: dict[int, ProcessObservation] = {}
     for observation in observations:
         by_pid[observation.pid] = observation
-    store.add_process_observations(by_pid.values())
+    store.add_process_observations(by_pid.values(), session_id=session_id)
 
 
 def _poll_exit_code(pid: int) -> int | None:

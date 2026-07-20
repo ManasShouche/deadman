@@ -1,0 +1,65 @@
+#!/usr/bin/env sh
+# Deterministic, credential-free proof of the `deadman attach` product path.
+#
+# It stands up an isolated Git repo with a stand-in `codex` process that spawns
+# a hung child, then runs the REAL `deadman attach` CLI against it. Everything
+# Deadman does here is production code: live-process discovery, ownership
+# proof via the OS process table, bounded termination, verification, and the
+# recorded incident. Only the supervised process is a stand-in so the smoke is
+# reproducible without a live Codex hang or an OpenAI key.
+set -eu
+
+ROOT=$(CDPATH= cd "$(dirname "$0")/.." && pwd)
+PYTHON=${PYTHON:-python3}
+
+if [ ! -x "$ROOT/.venv/bin/deadman" ]; then
+  echo "Bootstrapping Deadman in $ROOT/.venv"
+  "$PYTHON" -m venv "$ROOT/.venv"
+  "$ROOT/.venv/bin/python" -m pip install --upgrade pip
+  "$ROOT/.venv/bin/python" -m pip install -e "$ROOT"
+fi
+DEADMAN="$ROOT/.venv/bin/deadman"
+VENV_PYTHON="$ROOT/.venv/bin/python"
+
+WORKDIR=$(mktemp -d "${TMPDIR:-/tmp}/deadman-attach-smoke.XXXXXX")
+trap 'kill "$CODEX_PID" 2>/dev/null || true; rm -rf "$WORKDIR"' EXIT
+
+cd "$WORKDIR"
+git init -q
+
+# Stand-in Codex: launch a hung child (no output), then reap it like Codex
+# reaps its own tool command. It matches Deadman's live-process discovery
+# because the executable basename is `codex` and its cwd is this repo.
+mkdir -p bin
+cat > bin/codex <<PY
+#!$VENV_PYTHON
+import subprocess, sys
+child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(300)"])
+raise SystemExit(child.wait())
+PY
+chmod +x bin/codex
+
+( exec ./bin/codex ) &
+CODEX_PID=$!
+echo "Started stand-in Codex (pid $CODEX_PID) in $WORKDIR"
+sleep 1
+
+echo
+echo "Running: deadman attach --auto-recover --hung-timeout 0.5 --poll-interval 0.1"
+echo
+"$DEADMAN" attach --auto-recover --hung-timeout 0.5 --poll-interval 0.1 --diagnosis fake
+
+echo
+echo "Recorded incident(s):"
+"$VENV_PYTHON" - "$WORKDIR/.deadman/deadman.sqlite" <<'PY'
+import sqlite3, sys
+db = sys.argv[1]
+connection = sqlite3.connect(db)
+for incident_id, state in connection.execute("select id, state from incidents"):
+    print(f"  {incident_id} -> {state}")
+counts = {
+    table: connection.execute(f"select count(*) from {table}").fetchone()[0]
+    for table in ("signals", "diagnoses", "action_results", "verification_results")
+}
+print("  evidence:", counts)
+PY

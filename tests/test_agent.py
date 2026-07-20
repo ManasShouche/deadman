@@ -3,8 +3,9 @@ import sys
 import time
 from pathlib import Path
 
-from deadman.agent import _is_baseline_descendant, run_agent_cli
+from deadman.agent import run_agent_cli
 from deadman.domain import ProcessObservation
+from deadman.monitor import is_baseline_descendant
 from deadman.store import EvidenceStore
 
 
@@ -74,7 +75,7 @@ def test_interactive_codex_prompt_text_never_marks_codex_as_recoverable() -> Non
         observed_at=1.0,
     )
 
-    assert _is_baseline_descendant(observation)
+    assert is_baseline_descendant(observation)
 
 
 def test_run_agent_cli_auto_recovers_hung_child(tmp_path: Path) -> None:
@@ -94,8 +95,12 @@ def test_run_agent_cli_auto_recovers_hung_child(tmp_path: Path) -> None:
     )
 
     assert exit_code != 0
-    assert EvidenceStore(database).count("signals") == 1
-    assert EvidenceStore(database).count("action_results") == 1
+    store = EvidenceStore(database)
+    assert store.count("signals") == 1
+    assert store.count("action_results") == 1
+    assert store.count("incidents") == 1
+    assert store.count("diagnoses") == 1
+    assert store.count("verification_results") == 1
 
 
 def test_run_agent_cli_detects_hung_child_despite_parent_chatter(tmp_path: Path) -> None:
