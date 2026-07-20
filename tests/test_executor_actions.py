@@ -1,6 +1,8 @@
 import os
+import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from deadman.domain import RecoveryAction
@@ -51,6 +53,47 @@ def test_terminate_descendant_process_stops_owned_child() -> None:
         if child.poll() is None:
             child.kill()
             child.wait(timeout=10)
+
+
+def test_terminate_descendant_process_rejects_orphaned_setsid_grandchild() -> None:
+    launcher = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import subprocess, sys; "
+                "child = subprocess.Popen("
+                "[sys.executable, '-c', 'import time; time.sleep(30)'], "
+                "start_new_session=True"
+                "); "
+                "print(child.pid, flush=True)"
+            ),
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
+    assert launcher.stdout is not None
+    target_pid = int(launcher.stdout.readline().strip())
+    launcher.wait(timeout=10)
+    time.sleep(0.1)
+
+    try:
+        result = terminate_descendant_process(
+            root_pid=os.getpid(),
+            target_pid=target_pid,
+            evidence_id="proc_orphaned_setsid",
+            terminate_timeout_seconds=1.0,
+        )
+
+        assert result.attempted is False
+        assert result.succeeded is False
+        assert "not a proven descendant" in result.message
+    finally:
+        try:
+            os.kill(target_pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
 
 
 def test_write_checkpoint_handoff_stays_under_deadman_directory(tmp_path: Path) -> None:

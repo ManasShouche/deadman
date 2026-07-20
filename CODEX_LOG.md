@@ -120,3 +120,9 @@ This append-only log records how Codex and the developer built Deadman. It is de
 - **Human decisions:** judges should be able to provide one API key through the shell or project `.env`; TUI credentials remain separate.
 - **Codex contribution:** added automatic project `.env` loading with environment precedence, visible automatic fallback, explicit live-mode failure, `.env.example`, `deadman config check`, and credential-source tests.
 - **Safety:** `.env` files are ignored, existing environment values are never overridden, and no key value is displayed or persisted by Deadman.
+
+## 2026-07-20 — Fresh clone setup simplification
+
+- **Goal:** remove the hidden assumption that a fresh clone already has `.venv/bin/deadman`.
+- **Human decisions:** optimize the isolated interactive Codex TUI test path for least friction.
+- **Codex contribution:** added `./scripts/deadman` as a self-bootstrapping CLI wrapper, `./scripts/setup --dev` for contributor installs, `./scripts/live-tui-smoke` for the isolated Codex TUI supervision scenario, and README quick-start instructions.

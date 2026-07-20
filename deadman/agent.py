@@ -17,6 +17,7 @@ import psutil
 from deadman.detectors import detect_hung_process
 from deadman.domain import DetectorConfig, ProcessObservation, Signal
 from deadman.executor import terminate_descendant_process
+from deadman.paths import default_database_path, project_root
 from deadman.store import EvidenceStore
 
 PROCESS_LOOKUP_ERRORS = (
@@ -40,7 +41,8 @@ def run_agent_cli(
     if not argv:
         raise ValueError("argv must not be empty")
 
-    db_path = database_path or workspace / ".deadman" / "deadman.sqlite"
+    root = project_root(workspace)
+    db_path = database_path or default_database_path(root)
     store = EvidenceStore(db_path)
     child_pid, master_fd = pty.fork()
     if child_pid == 0:

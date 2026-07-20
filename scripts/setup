@@ -1,0 +1,25 @@
+#!/usr/bin/env sh
+set -eu
+
+ROOT=$(CDPATH= cd "$(dirname "$0")/.." && pwd)
+PYTHON=${PYTHON:-python3}
+EXTRA=""
+
+if [ "${1:-}" = "--dev" ]; then
+  EXTRA="[dev]"
+elif [ "${1:-}" != "" ]; then
+  echo "Usage: ./scripts/setup [--dev]" >&2
+  exit 2
+fi
+
+"$PYTHON" -m venv "$ROOT/.venv"
+"$ROOT/.venv/bin/python" -m pip install --upgrade pip
+"$ROOT/.venv/bin/python" -m pip install -e "$ROOT$EXTRA"
+
+if [ ! -f "$ROOT/.env" ]; then
+  cp "$ROOT/.env.example" "$ROOT/.env"
+fi
+
+echo "Deadman is ready:"
+echo "  .venv/bin/deadman config check"
+echo "  ./scripts/deadman config check"

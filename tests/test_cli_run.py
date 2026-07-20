@@ -35,6 +35,31 @@ def test_cli_run_records_supervised_command(tmp_path: Path) -> None:
     assert EvidenceStore(database).count("raw_events") == 2
 
 
+def test_cli_run_default_database_uses_git_root_from_subdirectory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "repo"
+    subdir = root / "nested"
+    subdir.mkdir(parents=True)
+    (root / ".git").mkdir()
+    monkeypatch.chdir(subdir)
+    script = "import json; print(json.dumps({'type':'thread.started','thread_id':'root-db'}))"
+
+    result = CliRunner().invoke(
+        app,
+        ["run", "--", sys.executable, "-c", script],
+        env={"OPENAI_API_KEY": ""},
+    )
+
+    db_path = root / ".deadman" / "deadman.sqlite"
+    assert result.exit_code == 0
+    assert str(db_path) in result.stdout
+    assert "Auto recover" in result.stdout
+    assert "off" in result.stdout
+    assert db_path.exists()
+
+
 def test_cli_run_auto_recovers_hung_child(tmp_path: Path) -> None:
     script = (
         "import json, subprocess, sys; "

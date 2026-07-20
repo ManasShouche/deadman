@@ -15,6 +15,22 @@ def test_run_agent_cli_returns_child_exit_code(tmp_path: Path) -> None:
     assert exit_code == 0
 
 
+def test_run_agent_cli_default_database_uses_git_root(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    subdir = root / "nested"
+    subdir.mkdir(parents=True)
+    (root / ".git").mkdir()
+
+    exit_code = run_agent_cli(
+        (sys.executable, "-c", "print('agent root db')"),
+        workspace=subdir,
+        hung_timeout_seconds=5.0,
+    )
+
+    assert exit_code == 0
+    assert (root / ".deadman" / "deadman.sqlite").exists()
+
+
 def test_run_agent_cli_auto_recovers_hung_child(tmp_path: Path) -> None:
     script = (
         "import subprocess, sys; "

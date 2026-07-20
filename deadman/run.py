@@ -35,6 +35,7 @@ from deadman.domain import (
 )
 from deadman.domain.incident import transition_incident
 from deadman.executor import terminate_descendant_process
+from deadman.paths import default_database_path, project_root
 from deadman.policy import PolicyEngine
 from deadman.store import EvidenceStore
 
@@ -68,11 +69,12 @@ def run_supervised_command(
 ) -> RunSummary:
     """Run a command, persist adapter evidence, and summarize deterministic status."""
 
-    db_path = database_path or workspace / ".deadman" / "deadman.sqlite"
+    root = project_root(workspace)
+    db_path = database_path or default_database_path(root)
     if hung_timeout_seconds is not None:
         return _run_live_supervised_command(
             argv,
-            workspace=workspace,
+            workspace=root,
             database_path=db_path,
             timeout_seconds=timeout_seconds,
             auto_recover=auto_recover,
@@ -88,7 +90,7 @@ def run_supervised_command(
     store.add_raw_events(captured.parsed.raw_events)
     store.add_normalized_events(captured.parsed.normalized_events)
     store.add_capability_report(captured.parsed.capabilities)
-    persist_managed_events(captured.parsed, workspace=workspace, store=store)
+    persist_managed_events(captured.parsed, workspace=root, store=store)
 
     status = _status(captured.returncode, captured.parsed.capabilities.has_completion_events)
     lingering = _find_lingering_command(captured.parsed.normalized_events)
@@ -104,7 +106,7 @@ def run_supervised_command(
         status = "awaiting_approval"
     if resume_result is not None:
         status = "recovered_and_resumed" if _resume_succeeded(resume_result) else "escalated"
-        persist_managed_events(resume_result.parsed, workspace=workspace, store=store)
+        persist_managed_events(resume_result.parsed, workspace=root, store=store)
     report = _report(captured, status, resume_result=resume_result)
     return RunSummary(
         argv=captured.argv,

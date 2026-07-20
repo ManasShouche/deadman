@@ -1,0 +1,16 @@
+#!/usr/bin/env sh
+set -eu
+
+ROOT=$(CDPATH= cd "$(dirname "$0")/.." && pwd)
+TEST_DIR=${DEADMAN_TUI_TEST_DIR:-/private/tmp/deadman-codex-tui-test}
+mkdir -p "$TEST_DIR"
+
+exec "$ROOT/scripts/deadman" agent \
+  --hung-timeout "${DEADMAN_HUNG_TIMEOUT:-20}" \
+  --auto-recover \
+  -- codex \
+  --no-alt-screen \
+  --cd "$TEST_DIR" \
+  --sandbox workspace-write \
+  --ask-for-approval never \
+  "Do not edit files. Run a Python diagnostic command that starts a child process sleeping for 10 minutes, waits for it, and produces no output until the child exits. This is only to test process supervision."

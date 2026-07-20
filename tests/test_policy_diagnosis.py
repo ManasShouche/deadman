@@ -67,7 +67,7 @@ def test_policy_rejects_unknown_evidence_and_missing_session_id() -> None:
         confidence=0.8,
         recommended_action=RecoveryAction.TERMINATE_DESCENDANT_PROCESS,
         rationale="bad evidence",
-        evidence_ids=("missing",),
+        evidence_ids=("event-999",),
         guidance="none",
         requires_human_approval=True,
     )

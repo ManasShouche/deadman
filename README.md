@@ -19,12 +19,34 @@ This repo now has the deterministic offline MVP path:
 - PTY supervision for the interactive Codex CLI through `deadman agent -- codex ...`.
 - Observe-only pairing with an existing interactive CLI session through `deadman watch`.
 
-`deadman run` is for `codex exec --json` and other non-interactive commands. When `--hung-timeout` is supplied, it also monitors the live process tree for a proven stuck descendant. Recovery actions require `--auto-recover`; without that flag, Deadman records the diagnosis and blocks at the approval boundary. Add `--resume-after-recovery` when you want Deadman to resume a recovered session with evidence-grounded guidance. Automatic resume requires the original Codex command to specify `--sandbox read-only` or `--sandbox workspace-write`; Deadman retains that sandbox, forces JSONL output, and escalates unless the resumed turn emits a completion event. If Codex exits while reporting an unfinished background command, `--auto-recover` uses the same guarded resume path with cleanup guidance. Diagnosis defaults to `auto`: an existing `OPENAI_API_KEY` wins, then Deadman loads the current repository's `.env`, otherwise it visibly uses the deterministic fixture fallback. Use `--diagnosis openai` to require live GPT-5.6 and fail fast when no key is configured. `deadman agent` is for the interactive Codex CLI; it runs the TUI inside a pseudo-terminal and monitors child processes in the background.
+`deadman run` is for `codex exec --json` and other non-interactive commands. When `--hung-timeout` is supplied, it also monitors the live process tree for a proven stuck descendant. `--auto-recover` is off by default; without that flag, Deadman records the diagnosis and blocks at the approval boundary. Add `--auto-recover` only when you want policy-approved recovery actions to execute automatically. Add `--resume-after-recovery` when you want Deadman to resume a recovered session with evidence-grounded guidance. Automatic resume requires the original Codex command to specify `--sandbox read-only` or `--sandbox workspace-write`; Deadman retains that sandbox, forces JSONL output, and escalates unless the resumed turn emits a completion event. If Codex exits while reporting an unfinished background command, `--auto-recover` uses the same guarded resume path with cleanup guidance. Diagnosis defaults to `auto`: an existing `OPENAI_API_KEY` wins, then Deadman loads the current repository's `.env`, otherwise it visibly uses the deterministic fixture fallback. Use `--diagnosis openai` to require live GPT-5.6 and fail fast when no key is configured. `deadman agent` is for the interactive Codex CLI; it runs the TUI inside a pseudo-terminal and monitors child processes in the background.
 
 ## Prerequisites
 
 - Python 3.11 or later
 - A locally authenticated Codex CLI for the adapter compatibility capture
+
+## Fresh clone quick start
+
+After cloning, enter the repo first. The clone URL is not a shell command by itself.
+
+```bash
+git clone https://github.com/ManasShouche/deadman
+cd deadman
+./scripts/deadman config check
+```
+
+`./scripts/deadman` creates `.venv`, installs Deadman in editable mode, and then forwards your arguments to the real CLI. For the isolated interactive Codex TUI supervision smoke test:
+
+```bash
+./scripts/live-tui-smoke
+```
+
+The smoke script runs Codex in `/private/tmp/deadman-codex-tui-test`, keeps the test isolated from this repository, and enables `--auto-recover` so Deadman can terminate a proven hung descendant. To install the contributor tools for tests and linting:
+
+```bash
+./scripts/setup --dev
+```
 
 ## Local setup
 
@@ -49,7 +71,7 @@ cp .env.example .env
 .venv/bin/mypy .
 ```
 
-The no-argument `deadman` command reports the baseline status. `deadman replay` performs the offline pipeline without Codex, an OpenAI key, or network access. `deadman run -- <command>` records a completed supervised command and writes `.deadman/deadman.sqlite` by default. Add `--hung-timeout <seconds>` to enable live hung-child detection; add `--auto-recover` only when you want policy-approved recovery actions to execute automatically. Add `--resume-after-recovery` to continue a recovered Codex session with evidence-grounded guidance.
+The no-argument `deadman` command reports the baseline status. `deadman replay` performs the offline pipeline without Codex, an OpenAI key, or network access. `deadman run -- <command>` records a completed supervised command and writes `.deadman/deadman.sqlite` at the Git repository root by default, not necessarily the current shell directory. Deadman prints the resolved SQLite path and auto-recover state on startup. Add `--hung-timeout <seconds>` to enable live hung-child detection; add `--auto-recover` only when you want policy-approved recovery actions to execute automatically. Add `--resume-after-recovery` to continue a recovered Codex session with evidence-grounded guidance.
 
 `deadman watch` reads persisted interactive Codex events from `$CODEX_HOME/sessions`. It requires explicit session pairing, enforces an exact repository match, and is observe-only because persisted events do not prove process ownership. Use `deadman watch` in a terminal to select a matching session, or pass `--session <id>` explicitly. `--once` ingests the available stream and exits.
 

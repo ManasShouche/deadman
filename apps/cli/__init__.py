@@ -13,6 +13,7 @@ from deadman.agent import run_agent_cli
 from deadman.config import load_openai_credentials
 from deadman.detectors.replay import replay_fixture
 from deadman.diagnosis import FakeDiagnosisClient, build_default_openai_diagnosis_client
+from deadman.paths import default_database_path, project_root
 from deadman.report import render_incident_report
 from deadman.run import run_supervised_command
 from deadman.store import EvidenceStore
@@ -129,7 +130,10 @@ def run(
     if diagnosis not in {"auto", "fake", "openai"}:
         raise typer.BadParameter("--diagnosis must be auto, fake, or openai")
 
-    credentials = load_openai_credentials(Path.cwd())
+    workspace = project_root(Path.cwd())
+    db_path = database or default_database_path(workspace)
+    _print_startup(db_path, auto_recover=auto_recover)
+    credentials = load_openai_credentials(workspace)
     use_openai = diagnosis == "openai" or (diagnosis == "auto" and credentials.available)
     if diagnosis == "openai" and not credentials.available:
         raise typer.BadParameter(
@@ -146,8 +150,8 @@ def run(
 
     summary = run_supervised_command(
         argv,
-        workspace=Path.cwd(),
-        database_path=database,
+        workspace=workspace,
+        database_path=db_path,
         timeout_seconds=timeout,
         auto_recover=auto_recover,
         hung_timeout_seconds=hung_timeout,
@@ -186,11 +190,14 @@ def agent(
     argv = tuple(ctx.args)
     if not argv:
         raise typer.BadParameter("provide an interactive command after --")
+    workspace = project_root(Path.cwd())
+    db_path = database or default_database_path(workspace)
+    _print_startup(db_path, auto_recover=auto_recover)
     raise typer.Exit(
         run_agent_cli(
             argv,
-            workspace=Path.cwd(),
-            database_path=database,
+            workspace=workspace,
+            database_path=db_path,
             hung_timeout_seconds=hung_timeout,
             auto_recover=auto_recover,
         )
@@ -223,7 +230,9 @@ def watch(
 
     if poll_interval <= 0:
         raise typer.BadParameter("--poll-interval must be greater than zero")
-    workspace = Path.cwd()
+    workspace = project_root(Path.cwd())
+    db_path = database or default_database_path(workspace)
+    _print_startup(db_path, auto_recover=False)
     if session is not None:
         try:
             candidate = select_cli_session(session, workspace)
@@ -242,7 +251,6 @@ def watch(
             raise typer.BadParameter("session number is outside the displayed range")
         candidate = candidates[selection - 1]
 
-    db_path = database or workspace / ".deadman" / "deadman.sqlite"
     snapshots = iter_watch_snapshots(
         candidate,
         EvidenceStore(db_path),
@@ -261,13 +269,16 @@ def watch(
 def config_check() -> None:
     """Report credential readiness without displaying secret values."""
 
-    credentials = load_openai_credentials(Path.cwd())
+    workspace = project_root(Path.cwd())
+    db_path = default_database_path(workspace)
+    credentials = load_openai_credentials(workspace)
     table = Table.grid(padding=(0, 1))
     table.add_column(style="cyan", no_wrap=True)
     table.add_column()
     table.add_row("OpenAI API", "ready" if credentials.available else "not configured")
     table.add_row("Credential source", credentials.source)
     table.add_row("Project env", credentials.env_file)
+    table.add_row("SQLite", str(db_path))
     table.add_row("Offline replay", "ready")
     table.add_row("Codex TUI auth", "separate; never read by Deadman")
     console.print(table)
@@ -285,3 +296,8 @@ def _demo_fixtures() -> tuple[Path, ...]:
         root / "repeated-failure.jsonl",
         root / "session-handoff.jsonl",
     )
+
+
+def _print_startup(database_path: Path, *, auto_recover: bool) -> None:
+    typer.echo(f"SQLite: {database_path}")
+    typer.echo(f"Auto recover: {'on' if auto_recover else 'off'}")
