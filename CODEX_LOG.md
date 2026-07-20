@@ -126,3 +126,9 @@ This append-only log records how Codex and the developer built Deadman. It is de
 - **Goal:** remove the hidden assumption that a fresh clone already has `.venv/bin/deadman`.
 - **Human decisions:** optimize the isolated interactive Codex TUI test path for least friction.
 - **Codex contribution:** added `./scripts/deadman` as a self-bootstrapping CLI wrapper, `./scripts/setup --dev` for contributor installs, `./scripts/live-tui-smoke` for the isolated Codex TUI supervision scenario, and README quick-start instructions.
+
+## 2026-07-20 — Interactive recovery target safety
+
+- **Goal:** ensure the interactive TUI supervisor cannot terminate Codex because task text resembles a shell command.
+- **Evidence:** a live TUI incident selected the Codex PID after the prompt mentioned Python, then terminated its descendant subtree.
+- **Codex contribution:** classify Codex and known helper executables from argv structure, and identify recoverable user commands from their executable and flags rather than arbitrary prompt text.

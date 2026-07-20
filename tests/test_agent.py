@@ -3,7 +3,8 @@ import sys
 import time
 from pathlib import Path
 
-from deadman.agent import run_agent_cli
+from deadman.agent import _is_baseline_descendant, run_agent_cli
+from deadman.domain import ProcessObservation
 from deadman.store import EvidenceStore
 
 
@@ -54,6 +55,26 @@ def test_run_agent_cli_default_database_uses_git_root(tmp_path: Path) -> None:
 
     assert exit_code == 0
     assert (root / ".deadman" / "deadman.sqlite").exists()
+
+
+def test_interactive_codex_prompt_text_never_marks_codex_as_recoverable() -> None:
+    observation = ProcessObservation(
+        evidence_id="codex",
+        root_pid=100,
+        pid=101,
+        parent_pid=100,
+        command_line=(
+            "/opt/homebrew/bin/codex",
+            "--sandbox",
+            "workspace-write",
+            "Run a Python diagnostic command that waits forever",
+        ),
+        is_running=True,
+        is_descendant=True,
+        observed_at=1.0,
+    )
+
+    assert _is_baseline_descendant(observation)
 
 
 def test_run_agent_cli_auto_recovers_hung_child(tmp_path: Path) -> None:

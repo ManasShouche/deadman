@@ -238,34 +238,33 @@ def _observe_descendant(
 
 
 def _is_baseline_descendant(observation: ProcessObservation) -> bool:
-    command = " ".join(observation.command_line)
-    if _looks_like_user_command(command):
+    command_line = observation.command_line
+    executable = _executable_name(command_line)
+    # The interactive Codex process carries the user's prompt in argv. Never
+    # classify it from arbitrary prompt text such as "run Python".
+    if executable == "codex":
+        return True
+    if _looks_like_user_command(command_line):
         return False
-    return any(
-        marker in command
-        for marker in (
-            "mcp/server.mjs",
-            "node_repl",
-            "codex-code-mode-host",
-        )
+    return (
+        executable in {"node_repl", "codex-code-mode-host"}
+        or "mcp/server.mjs" in command_line
     )
 
 
-def _looks_like_user_command(command: str) -> bool:
-    return any(
-        marker in command
-        for marker in (
-            "python",
-            "pytest",
-            "node -e",
-            "npm ",
-            "bash",
-            "zsh",
-            "sh -c",
-            "curl",
-            "sleep",
-        )
-    )
+def _looks_like_user_command(command_line: tuple[str, ...]) -> bool:
+    executable = _executable_name(command_line)
+    if executable in {"pytest", "npm", "bash", "zsh", "sh", "curl", "sleep"}:
+        return True
+    if "python" in executable:
+        return True
+    return executable == "node" and "-e" in command_line[1:]
+
+
+def _executable_name(command_line: tuple[str, ...]) -> str:
+    if not command_line:
+        return ""
+    return Path(command_line[0]).name.lower()
 
 
 def _persist_recent_observations(
