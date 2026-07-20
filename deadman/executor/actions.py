@@ -44,16 +44,28 @@ def terminate_descendant_process(
     if not monitor.is_descendant(target_pid):
         return _result(False, False, evidence_id, "target ancestry changed before signalling")
 
+    targets = _owned_target_subtree(process, monitor)
+    if not targets:
+        return _result(False, False, evidence_id, "target subtree is not a proven descendant")
+
     try:
-        process.terminate()
-        process.wait(timeout=terminate_timeout_seconds)
-        return _result(True, True, evidence_id, "terminated descendant process")
-    except psutil.TimeoutExpired:
-        if not monitor.is_descendant(target_pid):
-            return _result(True, False, evidence_id, "target ancestry changed before kill")
-        process.kill()
-        process.wait(timeout=terminate_timeout_seconds)
-        return _result(True, True, evidence_id, "killed descendant process after timeout")
+        _terminate_processes(targets)
+        _, alive = psutil.wait_procs(targets, timeout=terminate_timeout_seconds)
+        if alive:
+            if not monitor.is_descendant(target_pid):
+                return _result(True, False, evidence_id, "target ancestry changed before kill")
+            _kill_processes(alive)
+            _, alive = psutil.wait_procs(alive, timeout=terminate_timeout_seconds)
+        if alive:
+            return _result(True, False, evidence_id, "target subtree did not exit after kill")
+        if len(targets) == 1:
+            return _result(True, True, evidence_id, "terminated descendant process")
+        return _result(
+            True,
+            True,
+            evidence_id,
+            f"terminated descendant process tree ({len(targets)} processes)",
+        )
     except PROCESS_LOOKUP_ERRORS as exc:
         return _result(True, False, evidence_id, f"termination failed: {exc}")
 
@@ -106,6 +118,38 @@ def _result(attempted: bool, succeeded: bool, evidence_id: str, message: str) ->
         evidence_ids=(evidence_id,),
         message=message,
     )
+
+
+def _owned_target_subtree(
+    process: psutil.Process,
+    monitor: ProcessMonitor,
+) -> list[psutil.Process]:
+    try:
+        descendants = process.children(recursive=True)
+    except PROCESS_LOOKUP_ERRORS:
+        descendants = []
+
+    targets = [child for child in descendants if monitor.is_descendant(child.pid)]
+    if monitor.is_descendant(process.pid):
+        targets.append(process)
+    # Signal leaves before their parent so subprocess waiters wake naturally.
+    return list(reversed(targets))
+
+
+def _terminate_processes(processes: list[psutil.Process]) -> None:
+    for process in processes:
+        try:
+            process.terminate()
+        except PROCESS_LOOKUP_ERRORS:
+            pass
+
+
+def _kill_processes(processes: list[psutil.Process]) -> None:
+    for process in processes:
+        try:
+            process.kill()
+        except PROCESS_LOOKUP_ERRORS:
+            pass
 
 
 def _safe_name(value: str) -> str:

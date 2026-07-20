@@ -1,4 +1,6 @@
+import os
 import sys
+import time
 from pathlib import Path
 
 from deadman.agent import run_agent_cli
@@ -97,3 +99,43 @@ def test_run_agent_cli_detects_hung_child_despite_parent_chatter(tmp_path: Path)
     assert exit_code != 0
     assert EvidenceStore(database).count("signals") == 1
     assert EvidenceStore(database).count("action_results") == 1
+
+
+def test_run_agent_cli_auto_recovery_stops_inner_sleep_child(tmp_path: Path) -> None:
+    grandchild_pid_file = tmp_path / "grandchild.pid"
+    inner_script = (
+        "import os, pathlib, time; "
+        f"pathlib.Path({str(grandchild_pid_file)!r}).write_text(str(os.getpid())); "
+        "time.sleep(30)"
+    )
+    script = (
+        "import subprocess, sys; "
+        "child = subprocess.Popen(["
+        f"sys.executable, '-c', {inner_script!r}"
+        "]); "
+        "raise SystemExit(child.wait())"
+    )
+    database = tmp_path / "deadman.sqlite"
+
+    exit_code = run_agent_cli(
+        (sys.executable, "-c", script),
+        workspace=tmp_path,
+        database_path=database,
+        hung_timeout_seconds=0.2,
+        auto_recover=True,
+    )
+
+    grandchild_pid = int(grandchild_pid_file.read_text())
+    assert exit_code != 0
+    assert EvidenceStore(database).count("signals") == 1
+    assert EvidenceStore(database).count("action_results") == 1
+    time.sleep(0.1)
+    assert not _pid_is_running(grandchild_pid)
+
+
+def _pid_is_running(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True

@@ -55,6 +55,48 @@ def test_terminate_descendant_process_stops_owned_child() -> None:
             child.wait(timeout=10)
 
 
+def test_terminate_descendant_process_stops_owned_subtree() -> None:
+    child = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import subprocess, sys; "
+                "grandchild = subprocess.Popen("
+                "[sys.executable, '-c', 'import time; time.sleep(30)']"
+                "); "
+                "print(grandchild.pid, flush=True); "
+                "raise SystemExit(grandchild.wait())"
+            ),
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
+    assert child.stdout is not None
+    grandchild_pid = int(child.stdout.readline().strip())
+
+    try:
+        result = terminate_descendant_process(
+            root_pid=os.getpid(),
+            target_pid=child.pid,
+            evidence_id="proc_tree",
+            terminate_timeout_seconds=1.0,
+        )
+
+        assert result.attempted is True
+        assert result.succeeded is True
+        assert child.poll() is not None
+        time.sleep(0.1)
+        assert not _pid_is_running(grandchild_pid)
+    finally:
+        for pid in (grandchild_pid, child.pid):
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+
+
 def test_terminate_descendant_process_rejects_orphaned_setsid_grandchild() -> None:
     launcher = subprocess.Popen(
         [
@@ -94,6 +136,14 @@ def test_terminate_descendant_process_rejects_orphaned_setsid_grandchild() -> No
             os.kill(target_pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
+
+
+def _pid_is_running(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
 
 
 def test_write_checkpoint_handoff_stays_under_deadman_directory(tmp_path: Path) -> None:
