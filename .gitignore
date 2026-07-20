@@ -8,6 +8,9 @@ __pycache__/
 .mypy_cache/
 .coverage
 htmlcov/
+.env
+.env.*
+!.env.example
 
 # Runtime state and local evidence
 .deadman/

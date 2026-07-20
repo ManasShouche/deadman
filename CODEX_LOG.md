@@ -69,3 +69,54 @@ This append-only log records how Codex and the developer built Deadman. It is de
 - **Human decisions:** complete the project enough for testing, while preserving the approval-by-default safety rule.
 - **Codex contribution:** added `deadman run --hung-timeout` live process-tree monitoring, `--auto-recover` policy-gated descendant termination, optional `--diagnosis openai --model gpt-5.6`, richer run summaries, focused live recovery tests, and refreshed README/AGENTS status.
 - **Validation:** focused run/CLI tests passed during implementation; full validation recorded at handoff.
+
+## 2026-07-18 — Spec alignment and validation pass
+
+- **Goal:** fold the Codex implementation plan into `spec.md` and validate the implementation against it.
+- **Human decisions:** use the attached implementation plan as the completion checklist while preserving the current MVP safety boundary: watch mode is observe-only unless process ownership can be proven.
+- **Codex contribution:** added a spec alignment section covering operating modes, detector priorities, action-name compatibility, checkpoint handoff shape, storage tables, implementation phases, required tests, CLI surface, report contents, and the MVP-complete checklist.
+- **Validation:** `pytest` passed with 74 tests outside the sandbox because process-tree inspection is sandbox-blocked; Ruff and mypy passed; `deadman demo`, all three replay fixtures, and a live `deadman run --hung-timeout 0.2 --auto-recover` smoke passed.
+- **Safety note:** a sandboxed test run failed process-tree cases because `psutil` and `ps` could not inspect child processes; the same focused and full suites passed with normal OS process-inspection permissions.
+
+## 2026-07-17 — Guided resume after live recovery
+
+- **Goal:** make the live recovery loop continue a recovered Codex session instead of stopping immediately after descendant termination.
+- **Human decisions:** user live-tested a hung Codex prompt and asked why the run exited after recovery and did not resume with guidance.
+- **Codex contribution:** added `--resume-after-recovery`, which runs `codex exec resume <session-id> <guidance>` after verified recovery when a session id is available, plus run-summary fields, terminal output rows, tests, and README usage.
+- **Validation:** focused run/CLI tests, Ruff, and mypy passed during implementation; full validation recorded at handoff.
+
+## 2026-07-17 — Lingering Codex command recovery
+
+- **Goal:** handle live Codex runs that exit successfully while leaving a reported background terminal command running.
+- **Human decisions:** user live-tested `codex exec --json` prompts that left `command_execution` items in progress and observed Deadman reported `completed` instead of recovery.
+- **Codex contribution:** detect completed JSONL traces with `item.type == command_execution`, `status == in_progress`, and `exit_code == null`; in approval mode report `awaiting_approval`, and with `--auto-recover` resume the Codex session with cleanup guidance.
+- **Validation:** focused run/CLI tests, Ruff, and mypy passed during implementation; full validation recorded at handoff.
+
+## 2026-07-17 — Interactive Codex CLI supervision
+
+- **Goal:** support the agentic interactive Codex CLI, not only `codex exec --json`.
+- **Human decisions:** user clarified that Deadman must work with the interactive coding-agent CLI surface as well as the non-interactive exec surface.
+- **Codex contribution:** added `deadman agent -- <interactive command>`, a PTY wrapper that passes through terminal input/output while monitoring the launched agent process tree and terminating proven hung descendants when `--auto-recover` is set.
+- **Validation:** focused agent/CLI tests, Ruff, and mypy passed during implementation; full validation recorded at handoff.
+
+## 2026-07-17 — Guarded resume verification
+
+- **Goal:** prevent a zero-exit resume without adapter completion from being reported as resolved.
+- **Human decisions:** user live-tested a resume that returned zero but produced only one event and asked for guarded resume behavior.
+- **Codex contribution:** automatic resume now retains an explicit safe Codex sandbox, forces JSONL output, refuses missing or unsafe sandbox modes, and requires a completion event before reporting `recovered_and_resumed`.
+- **Validation:** focused run and CLI tests cover safe argument construction and zero-exit unverified resume escalation; full validation recorded at handoff.
+
+## 2026-07-18 — Session foundation and observe-only watch
+
+- **Goal:** adopt the expanded Deadman roadmap incrementally without weakening the working managed recovery path.
+- **Human decisions:** preserve existing functionality, make attach mode observe-only, and deliver the session/storage foundation plus watch before expanding detectors.
+- **Codex contribution:** added non-destructive schema v2 migration, session-scoped raw and normalized events, managed capture registration, persisted CLI discovery and tailing, explicit repository-bound pairing, `deadman watch`, capability reporting, sanitized fixtures, and architecture/event-contract documentation.
+- **Safety:** attach mode exposes no process-control or recovery option because persisted session files do not prove PID ownership.
+- **Validation:** migration, adapter, partial-line, idempotency, truncation, CLI pairing, observe-only safety, managed lifecycle, and full repository gates recorded at handoff.
+
+## 2026-07-18 — Judge-friendly diagnosis credentials
+
+- **Goal:** minimize live-demo setup without accessing or shipping private Codex authentication state.
+- **Human decisions:** judges should be able to provide one API key through the shell or project `.env`; TUI credentials remain separate.
+- **Codex contribution:** added automatic project `.env` loading with environment precedence, visible automatic fallback, explicit live-mode failure, `.env.example`, `deadman config check`, and credential-source tests.
+- **Safety:** `.env` files are ignored, existing environment values are never overridden, and no key value is displayed or persisted by Deadman.

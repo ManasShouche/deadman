@@ -47,6 +47,104 @@ class IncidentState(StrEnum):
     ESCALATED = "ESCALATED"
 
 
+class SessionMode(StrEnum):
+    """How Deadman observes a Codex session."""
+
+    MANAGED = "managed"
+    ATTACH = "attach"
+    REPLAY = "replay"
+    LEGACY = "legacy"
+
+
+class SessionOwnership(StrEnum):
+    """Whether Deadman can prove process ownership for a session."""
+
+    MANAGED = "managed"
+    UNPROVEN = "unproven"
+
+
+class SessionEventKind(StrEnum):
+    """Stable event categories independent of Codex's persisted schema."""
+
+    SESSION_STARTED = "SESSION_STARTED"
+    TURN_STARTED = "TURN_STARTED"
+    TURN_COMPLETED = "TURN_COMPLETED"
+    TURN_CONTEXT = "TURN_CONTEXT"
+    MESSAGE = "MESSAGE"
+    TOOL_CALL_STARTED = "TOOL_CALL_STARTED"
+    TOOL_CALL_COMPLETED = "TOOL_CALL_COMPLETED"
+    USAGE_UPDATED = "USAGE_UPDATED"
+    COMPACTION = "COMPACTION"
+    UNKNOWN = "UNKNOWN"
+    MALFORMED = "MALFORMED"
+
+
+class SessionRecord(BaseModel):
+    """Session metadata used as the root for stored evidence."""
+
+    model_config = ConfigDict(frozen=True)
+
+    session_id: str
+    external_session_id: str | None = None
+    mode: SessionMode
+    source: str
+    cwd: str
+    ownership: SessionOwnership
+    status: str
+    cli_version: str | None = None
+    started_at: float
+    last_seen_at: float
+
+
+class SessionEvent(BaseModel):
+    """Raw and normalized evidence from one session source."""
+
+    model_config = ConfigDict(frozen=True)
+
+    evidence_id: str
+    session_id: str
+    source_id: str
+    source_offset: int
+    observed_at: float
+    raw_line: str
+    raw_event_type: str
+    kind: SessionEventKind
+    payload: dict[str, Any] | None = None
+    parse_error: str | None = None
+
+
+class EventSourceCursor(BaseModel):
+    """Durable append-only file cursor for attach-mode ingestion."""
+
+    model_config = ConfigDict(frozen=True)
+
+    source_id: str
+    session_id: str
+    path: str
+    inode: int
+    generation: int = 0
+    byte_offset: int = 0
+    updated_at: float
+
+
+class WatchSnapshot(BaseModel):
+    """Observe-only status rendered for one explicitly paired session."""
+
+    model_config = ConfigDict(frozen=True)
+
+    session_id: str
+    source: str
+    cwd: str
+    event_count: int
+    new_event_count: int
+    last_event_kind: SessionEventKind | None = None
+    last_event_at: float | None = None
+    turn_state: str = "unknown"
+    capabilities: tuple[str, ...] = ()
+    active_signals: tuple[str, ...] = ()
+    ownership: SessionOwnership = SessionOwnership.UNPROVEN
+
+
 class RawAdapterEvent(BaseModel):
     """One raw JSONL line retained from the Codex adapter."""
 
@@ -229,6 +327,11 @@ class RunSummary(BaseModel):
     recommended_action: RecoveryAction | None = None
     policy_allowed: bool | None = None
     verification_resolved: bool | None = None
+    diagnosis_backend: str | None = None
+    resume_attempted: bool = False
+    resume_returncode: int | None = None
+    resume_status: str | None = None
+    resume_raw_event_count: int = 0
 
 
 class StateTransition(BaseModel):

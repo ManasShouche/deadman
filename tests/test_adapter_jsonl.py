@@ -3,7 +3,7 @@ import json
 from deadman.adapter import parse_jsonl_lines
 
 
-def test_parse_jsonl_lines_detects_observed_gate_a_capabilities() -> None:
+def test_parse_jsonl_lines_detects_observed__capabilities() -> None:
     lines = [
         json.dumps({"type": "thread.started", "thread_id": "session-123"}),
         json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": "ok"}}),

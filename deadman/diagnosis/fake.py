@@ -40,7 +40,11 @@ def _recommended_action(kind: SignalKind) -> RecoveryAction:
 
 def _guidance(kind: SignalKind) -> str:
     if kind is SignalKind.HUNG_PROCESS:
-        return "Terminate only the proven descendant process, then verify parent progress."
+        return (
+            "The stuck descendant process was terminated and the parent run recovered. "
+            "Do not rerun the same no-output command; continue from verified progress "
+            "or summarize that the supervision diagnostic succeeded."
+        )
     if kind is SignalKind.REPEATED_FAILURE:
         return "Resume with the repeated failure signature and unchanged workspace evidence."
     if kind is SignalKind.NO_PROGRESS:

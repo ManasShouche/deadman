@@ -1,0 +1,7 @@
+2026-07-17T10:36:55.870570Z ERROR codex_models_manager::cache: failed to load models cache: missing field `supports_reasoning_summaries` at line 88 column 5
+{"type":"thread.started","thread_id":"019f6fa6-9814-7df3-ac0e-c32254da16ca"}
+{"type":"turn.started"}
+{"type":"item.started","item":{"id":"item_0","type":"command_execution","command":"/bin/zsh -lc ls","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_0","type":"command_execution","command":"/bin/zsh -lc ls","aggregated_output":"AGENTS.md\nCODEX_LOG.md\nLICENSE\nREADME.md\napps\ndeadman\ndeadman.egg-info\ngate_a.txt\npyproject.toml\nscenarios\nspec.md\ntests\n","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"Files in `/Users/as-mac-1329/Documents/openai-2`:\n\n```text\nAGENTS.md\nCODEX_LOG.md\nLICENSE\nREADME.md\napps\ndeadman\ndeadman.egg-info\ngate_a.txt\npyproject.toml\nscenarios\nspec.md\ntests\n```"}}
+{"type":"turn.completed","usage":{"input_tokens":37032,"cached_input_tokens":23808,"output_tokens":116,"reasoning_output_tokens":0}}

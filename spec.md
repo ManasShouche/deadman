@@ -44,6 +44,10 @@ The product has three layers:
 
 The initial product is a **terminal wrapper**, not a Codex plugin. A wrapper owns the launched process tree and works even when the supervised Codex session cannot call an MCP tool. A Codex plugin/MCP companion is roadmap-only.
 
+### Current delivery slice: foundation and watch
+
+The current incremental slice preserves managed recovery and adds session-scoped evidence plus `deadman watch` for explicitly paired persisted interactive CLI sessions. Persisted session metadata does not prove process ownership, so watch mode is observe-only: it cannot terminate a PID, resume Codex, or execute another recovery action. The observed compatibility contract is recorded in `docs/codex-event-contract.md`.
+
 The MVP implementation remains Python. Rust is a strong future option for a native wrapper/TUI and process-supervision shell, but it is not part of the Build Week MVP rewrite. If Rust is added later, it should start as a thin `clap` + `ratatui`/`crossterm` frontend around the existing JSON/SQLite contract rather than replacing the tested detector, policy, and diagnosis core immediately.
 
 ## 3. Evidence model and compatibility gates
@@ -132,6 +136,8 @@ Recovery is verified only when, within the configured verification window, Deadm
 
 If the action fails, times out, or yields no verification evidence, Deadman transitions to `ESCALATED`. It must never retry an action indefinitely and must perform at most **two** recovery attempts for one incident.
 
+Automatic Codex resume must retain an explicit `read-only` or `workspace-write` sandbox and request JSONL output. A zero exit code without an observed adapter completion event is not successful verification; Deadman must escalate it.
+
 ## 5. GPT-5.6 is load-bearing, bounded, and measurable
 
 Deadman calls the OpenAI Responses API only after a deterministic signal opens an incident. Use the competition-required GPT-5.6 model family; start with `gpt-5.6` at `reasoning.effort: "medium"` and make model/effort configurable for evaluation. The model alias routes to the current flagship GPT-5.6 model; record the resolved model identifier returned by the API in every incident.
@@ -164,6 +170,10 @@ The policy engine rejects a response when it names unknown evidence, an unavaila
 - A cooldown prevents the same fingerprint from reopening immediately.
 - Store API usage returned by the response and show it beside the estimated saved attempts; do not invent dollar savings.
 
+### Shipped credential behavior
+
+Live diagnosis checks an existing `OPENAI_API_KEY` first, then loads only the current repository's ignored `.env` without overriding the shell. Automatic mode visibly falls back to the deterministic fixture client when no key exists; explicit OpenAI mode fails fast. Deadman never reads Codex TUI authentication caches. `deadman config check` reports readiness without displaying secret values, and offline replay remains credential-free.
+
 ## 6. Technical design
 
 ### Stack
@@ -184,8 +194,9 @@ No Docker, web dashboard, Postgres, background service, login system, cloud depl
 ### Components
 
 ```text
-apps/cli               commands: run, demo, replay, report
-deadman/adapter         subprocess launch; JSONL parser; capability detection
+apps/cli               commands: run, agent, watch, demo, replay, report
+deadman/adapter         subprocess and persisted-session event adapters
+deadman/watch           observe-only persisted-session tail loop
 deadman/monitor         process tree and output/liveness observations
 deadman/domain          Pydantic models and incident state machine
 deadman/detectors       four pure detectors
@@ -314,7 +325,190 @@ Do not display unmeasured "tokens saved," a fabricated context percentage, an au
 - Public video under three minutes with audible explanation of both Codex and GPT-5.6.
 - Devpost listing under Developer Tools, with the runnable/replay path front and centre.
 
-## 13. Roadmap (not part of the submission)
+## 13. Implementation plan alignment
+
+This section incorporates the Codex implementation plan as the execution checklist for the current build. Where the plan is broader than the deadline-critical MVP, this spec keeps the safer narrowed behavior as the controlling requirement.
+
+### Product lifecycle
+
+The implementation plan names the lifecycle as:
+
+```text
+Detect -> Diagnose -> Recover -> Verify -> Prevent
+```
+
+The Build Week demo maps this to the product loop already defined above:
+
+```text
+Observe -> Detect -> Diagnose -> Recover -> Verify -> Report
+```
+
+`Prevent` is delivered as report guidance, handoff guidance, and documented safety recommendations. Automatic prevention-rule edits are roadmap-only.
+
+### Operating modes
+
+| Mode | Command | MVP requirement | Safety boundary |
+| --- | --- | --- | --- |
+| Managed mode | `deadman run -- <codex command>` | Launch and own the Codex process tree, capture JSONL evidence, detect an owned hung child, diagnose, recover, and verify | Destructive recovery is allowed only for proven descendants and only with policy approval or explicit `--auto-recover` |
+| Interactive managed mode | `deadman agent -- <interactive command>` | Run an interactive coding-agent CLI inside a supervised PTY and observe its descendants | Can terminate only proven hung descendants when `--auto-recover` is set |
+| Attach/watch mode | `deadman watch` | Pair with one persisted Codex CLI session, ingest append-only session events, and render observe-only status | Persisted events do not prove PID ownership, so watch mode cannot terminate, resume, or respawn |
+| Replay mode | `deadman replay <trace>` | Run detector, diagnosis, policy, verification, and reporting offline without Codex, network, or OpenAI credentials | Must remain deterministic and judge-safe |
+
+The broader plan allows attach-mode interventions when ownership is proven. The current observed Codex persisted-event contract does not prove that ownership, so this MVP intentionally falls back to observe-only watch behavior.
+
+### Detector priorities
+
+The implementation plan calls the no-progress loop the primary detector and names these failure classes:
+
+1. no-progress loop;
+2. repeated failure;
+3. hung execution;
+4. context continuity risk.
+
+The shipped signal names remain:
+
+```text
+NO_PROGRESS
+REPEATED_FAILURE
+HUNG_PROCESS
+SESSION_BUDGET_RISK
+```
+
+Repeated-error cycles, A-B-A-B loops, and richer no-progress features are valid detector extensions only when they have fixture evidence and false-positive tests.
+
+### Recovery action compatibility
+
+The implementation plan's action names map to the current typed enum as follows:
+
+| Implementation-plan action | Current MVP action |
+| --- | --- |
+| `OBSERVE` | `OBSERVE` |
+| `ALERT` | `HALT_AND_ESCALATE` or policy-blocked approval output |
+| `RESUME_WITH_GUIDANCE` | `CANCEL_AND_RESUME` |
+| `TERMINATE_OWNED_CHILD` | `TERMINATE_DESCENDANT_PROCESS` |
+| `CHECKPOINT_AND_RESPAWN` | `CHECKPOINT_AND_RESPAWN` |
+| `HALT_AND_ESCALATE` | `HALT_AND_ESCALATE` |
+
+The enum is not renamed during the MVP because fixtures, stored diagnoses, tests, and report output already depend on the current names. Any rename requires a compatibility migration.
+
+### Checkpoint handoff shape
+
+`CHECKPOINT_AND_RESPAWN` must write an untracked handoff under `.deadman/handoffs/`. The target handoff structure is:
+
+```markdown
+# Deadman Handoff
+
+## Original goal
+
+## Work completed
+
+## Current repository state
+
+## Important decisions
+
+## Failed approaches
+
+## Active failure
+
+## Open tasks
+
+## Recommended next step
+
+## Verification command
+```
+
+Every claim must be grounded in stored evidence, repository state, recent relevant transcript, or task metadata.
+
+### Storage model
+
+The canonical SQLite model includes:
+
+```text
+sessions
+events
+workspace_snapshots
+process_observations
+signals
+incidents
+incident_transitions
+diagnoses
+policy_decisions
+actions
+verifications
+reports
+```
+
+Legacy tables may remain during compatibility migration, but new evidence should be session-scoped where practical. Every evidence reference used in diagnosis must resolve to a stored record or be rejected by policy/validation.
+
+### Implementation phases
+
+| Phase | Scope | MVP status target |
+| --- | --- | --- |
+| 0 | Verify Codex JSONL/session assumptions and document unsupported fields | Required |
+| 1 | Event ingestion, normalization, malformed-line handling, SQLite persistence, fixtures | Required |
+| 2 | Progress monitoring: Git fingerprint, command/test/error/process/usage observations | Required for replay; live use may be capability-gated |
+| 3 | First detectors with thresholds, evidence, severity, false-positive tests, replay fixtures | Required |
+| 4 | Incident lifecycle, transitions, duplicate handling, cooldowns, audit trail, limits | Required |
+| 5 | GPT-5.6 diagnosis, compact evidence packet, structured output, validation, fake client | Required |
+| 6 | Policy and recovery actions, including safe termination and checkpoint handoff | Required for selected MVP actions |
+| 7 | Post-action verification, second-attempt limits, automatic escalation | Required |
+| 8 | Attach/watch mode with explicit pairing and observe-only fallback | Required as observe-only |
+| 9 | Replay/demo scenarios for hung process, repeated failure/no-progress, and checkpoint/context risk | Required |
+| 10 | Companion MCP tools and recovery skill | Roadmap unless managed recovery, verification, and submission materials are already complete |
+
+### Required tests
+
+Unit and integration coverage should include:
+
+- JSONL parsing, session-event normalization, malformed and unknown events;
+- workspace fingerprint comparison and progress verification;
+- detector thresholds and false-positive paths;
+- repeated failure, no-progress, hung process, and session-budget/context-risk replay fixtures;
+- process-ownership policy and unrelated-PID refusal;
+- action idempotency, stale/duplicate action rejection, and intervention limits;
+- incident state transitions and escalation;
+- evidence-reference validation for model output;
+- checkpoint generation;
+- attach/watch observe-only behavior when ownership confidence is insufficient;
+- replay equivalence without live Codex or OpenAI credentials.
+
+### CLI surface
+
+The first release should stay small:
+
+```bash
+deadman run -- <codex command>
+deadman agent -- <interactive command>
+deadman watch
+deadman demo
+deadman replay <scenario-or-trace>
+deadman report <incident-id>
+```
+
+`deadman status`, `deadman incidents`, and `deadman config check` are useful follow-ons, but are not required for the Build Week submission unless the core demo is already frozen.
+
+### Report contents
+
+Incident reports should include the session/task when known, classification, timeline, detector evidence, diagnosis confidence, approved and rejected actions, recovery attempt, verification evidence, final outcome, and prevention recommendation. Estimated tokens or time avoided may be shown only when the estimate is labelled and the calculation is explained.
+
+### Definition of MVP complete
+
+The implementation-plan MVP is complete only when:
+
+1. Deadman supervises a managed Codex run.
+2. It detects at least three deterministic failure scenarios.
+3. GPT-5.6 diagnoses an incident from compact cited evidence.
+4. Policy code authorizes a typed action.
+5. Deadman performs a real bounded recovery.
+6. Verification proves whether progress resumed.
+7. A failed recovery escalates safely.
+8. A context-risk incident can create a usable handoff.
+9. Judges can replay incidents without live credentials.
+10. Attach mode can monitor one paired Codex TUI session from another terminal.
+11. The README clearly distinguishes managed guarantees from attach-mode limitations.
+12. The video shows only functionality that exists.
+
+## 14. Roadmap (not part of the submission)
 
 - A thin `deadman-mcp` companion exposing read-only status and a policy-gated checkpoint request.
 - Additional adapter support for other coding-agent CLIs.

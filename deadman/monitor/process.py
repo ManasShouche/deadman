@@ -33,6 +33,8 @@ class ProcessMonitor:
 
         try:
             process = psutil.Process(pid)
+            if process.ppid() == self.root_pid:
+                return True
             parents = process.parents()
         except PROCESS_LOOKUP_ERRORS:
             return False

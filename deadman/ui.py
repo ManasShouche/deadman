@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from datetime import datetime
 
 from rich.console import Group
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from deadman.domain import ReplayIncident, RunSummary
+from deadman.adapter import SessionCandidate
+from deadman.domain import ReplayIncident, RunSummary, WatchSnapshot
 
 
 def render_demo_dashboard(incidents: Iterable[ReplayIncident]) -> Panel:
@@ -71,6 +73,8 @@ def render_run_summary(summary: RunSummary) -> Panel:
     table.add_row("Raw events", str(summary.raw_event_count))
     table.add_row("Normalized events", str(summary.normalized_event_count))
     table.add_row("Session ID", summary.session_id or "unknown")
+    if summary.diagnosis_backend is not None:
+        table.add_row("Diagnosis", summary.diagnosis_backend)
     if summary.signal_kind is not None:
         table.add_row("Signal", summary.signal_kind.value)
     if summary.recommended_action is not None:
@@ -79,8 +83,56 @@ def render_run_summary(summary: RunSummary) -> Panel:
         table.add_row("Policy", "allowed" if summary.policy_allowed else "blocked")
     if summary.verification_resolved is not None:
         table.add_row("Verification", "RESOLVED" if summary.verification_resolved else "ESCALATED")
+    if summary.resume_attempted:
+        table.add_row("Resume", summary.resume_status or "attempted")
+        table.add_row("Resume code", str(summary.resume_returncode))
+        table.add_row("Resume events", str(summary.resume_raw_event_count))
     table.add_row("SQLite", summary.database_path)
     return Panel(table, title="Deadman run", border_style="green")
+
+
+def render_session_candidates(candidates: Iterable[SessionCandidate]) -> Panel:
+    """Render attach candidates without implying that a process is owned or active."""
+
+    table = Table(expand=True)
+    table.add_column("#", justify="right", style="cyan")
+    table.add_column("Session")
+    table.add_column("Source")
+    table.add_column("Modified")
+    for index, candidate in enumerate(candidates, start=1):
+        table.add_row(
+            str(index),
+            candidate.session_id,
+            candidate.source,
+            datetime.fromtimestamp(candidate.modified_at)
+            .astimezone()
+            .strftime("%Y-%m-%d %H:%M:%S"),
+        )
+    return Panel(table, title="Codex session pairing", border_style="cyan")
+
+
+def render_watch_snapshot(snapshot: WatchSnapshot) -> Panel:
+    """Render one observe-only persisted-session status snapshot."""
+
+    table = Table.grid(padding=(0, 1))
+    table.add_column(style="cyan", no_wrap=True)
+    table.add_column()
+    table.add_row("Mode", "observe-only")
+    table.add_row("Session", snapshot.session_id)
+    table.add_row("Source", snapshot.source)
+    table.add_row("Workspace", snapshot.cwd)
+    table.add_row("Turn", snapshot.turn_state)
+    table.add_row("Events", str(snapshot.event_count))
+    table.add_row("New events", str(snapshot.new_event_count))
+    table.add_row(
+        "Last event",
+        snapshot.last_event_kind.value if snapshot.last_event_kind is not None else "unknown",
+    )
+    table.add_row("Capabilities", ", ".join(snapshot.capabilities) or "none observed")
+    table.add_row("Signals", ", ".join(snapshot.active_signals) or "none")
+    table.add_row("Last progress", "not yet measured")
+    table.add_row("Ownership", snapshot.ownership.value)
+    return Panel(table, title="Deadman watch", border_style="yellow")
 
 
 def _title() -> Text:

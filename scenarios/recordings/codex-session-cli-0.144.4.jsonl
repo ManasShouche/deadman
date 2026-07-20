@@ -1,0 +1,6 @@
+{"timestamp":"2026-07-18T10:00:00Z","type":"session_meta","payload":{"id":"fixture-session","cwd":"/sanitized/repository","source":"cli","cli_version":"0.144.4"}}
+{"timestamp":"2026-07-18T10:00:01Z","type":"event_msg","payload":{"type":"task_started","turn_id":"fixture-turn"}}
+{"timestamp":"2026-07-18T10:00:02Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":100}}}
+{"timestamp":"2026-07-18T10:00:03Z","type":"response_item","payload":{"type":"custom_tool_call","name":"fixture_tool","call_id":"fixture-call"}}
+{"timestamp":"2026-07-18T10:00:04Z","type":"response_item","payload":{"type":"custom_tool_call_output","call_id":"fixture-call","output":"sanitized"}}
+{"timestamp":"2026-07-18T10:00:05Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"fixture-turn"}}

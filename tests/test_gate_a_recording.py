@@ -4,7 +4,7 @@ from pathlib import Path
 RECORDING = Path("scenarios/recordings/gate-a-codex-cli-0.144.4.jsonl")
 
 
-def test_gate_a_recording_is_jsonl_with_observed_capabilities() -> None:
+def test__recording_is_jsonl_with_observed_capabilities() -> None:
     events = [json.loads(line) for line in RECORDING.read_text().splitlines()]
 
     assert all(isinstance(event, dict) for event in events)

@@ -1,4 +1,5 @@
 import json
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -134,3 +135,35 @@ def test_evidence_store_persists_incident_lifecycle_records(tmp_path: Path) -> N
     assert store.list_payloads("action_results")[0]["succeeded"] is True
     assert store.list_payloads("verification_results")[0]["resolved"] is True
     assert store.list_payloads("reports")[0]["report"] == "incident report"
+
+
+def test_evidence_store_migrates_legacy_raw_events_without_deleting_them(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "legacy.sqlite"
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            """
+            create table raw_events (
+                id text primary key,
+                line_number integer not null,
+                event_type text not null,
+                raw_line text not null,
+                parse_error text,
+                payload_json text
+            )
+            """
+        )
+        connection.execute(
+            """
+            insert into raw_events values
+            ('evt_1', 1, 'thread.started', '{"type":"thread.started"}', null,
+             '{"type":"thread.started"}')
+            """
+        )
+
+    store = EvidenceStore(path)
+
+    assert store.count("raw_events") == 1
+    assert store.get_session("legacy-unscoped") is not None
+    assert store.session_event_count("legacy-unscoped") == 1
