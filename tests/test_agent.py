@@ -15,6 +15,29 @@ def test_run_agent_cli_returns_child_exit_code(tmp_path: Path) -> None:
     assert exit_code == 0
 
 
+def test_run_agent_cli_sets_child_terminal_dimensions(tmp_path: Path) -> None:
+    output = tmp_path / "size.txt"
+    script = (
+        "import os, shutil, sys; "
+        "size = shutil.get_terminal_size(); "
+        f"open({str(output)!r}, 'w').write("
+        "f'{size.columns} {size.lines} {os.environ.get(\"COLUMNS\")} {os.environ.get(\"LINES\")}')"
+    )
+
+    exit_code = run_agent_cli(
+        (sys.executable, "-c", script),
+        workspace=tmp_path,
+        hung_timeout_seconds=5.0,
+    )
+
+    columns, rows, env_columns, env_rows = output.read_text().split()
+    assert exit_code == 0
+    assert int(columns) >= 80
+    assert int(rows) >= 24
+    assert int(env_columns) >= 80
+    assert int(env_rows) >= 24
+
+
 def test_run_agent_cli_default_database_uses_git_root(tmp_path: Path) -> None:
     root = tmp_path / "repo"
     subdir = root / "nested"

@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 import pty
 import select
+import shutil
+import signal as signal_module
 import sys
 import termios
 import time
@@ -44,13 +46,23 @@ def run_agent_cli(
     root = project_root(workspace)
     db_path = database_path or default_database_path(root)
     store = EvidenceStore(db_path)
+    columns, rows = _terminal_size()
     child_pid, master_fd = pty.fork()
     if child_pid == 0:
+        os.environ["COLUMNS"] = str(columns)
+        os.environ["LINES"] = str(rows)
+        _set_window_size(0, columns=columns, rows=rows)
         os.execvp(argv[0], list(argv))
 
+    _set_window_size(master_fd, columns=columns, rows=rows)
     stdin_fd = _fileno_or_none(sys.stdin)
     stdout_fd = _fileno_or_none(sys.stdout)
     old_tty = None
+    old_sigwinch = signal_module.getsignal(signal_module.SIGWINCH)
+    signal_module.signal(
+        signal_module.SIGWINCH,
+        lambda _signum, _frame: _resize_child_pty(master_fd),
+    )
     if stdin_fd is not None and sys.stdin.isatty():
         old_tty = termios.tcgetattr(stdin_fd)
         tty.setraw(stdin_fd)
@@ -114,6 +126,7 @@ def run_agent_cli(
             _write_status(f"[deadman] {result.message}\n")
             last_output_at = time.monotonic()
     finally:
+        signal_module.signal(signal_module.SIGWINCH, old_sigwinch)
         if old_tty is not None and stdin_fd is not None:
             termios.tcsetattr(stdin_fd, termios.TCSADRAIN, old_tty)
         try:
@@ -228,6 +241,29 @@ def _drain_master(master_fd: int, stdout_fd: int | None) -> None:
         if not output:
             return
         _write_output(stdout_fd, output)
+
+
+def _terminal_size() -> tuple[int, int]:
+    size = shutil.get_terminal_size(fallback=(120, 40))
+    columns = max(size.columns, 80)
+    rows = max(size.lines, 24)
+    return columns, rows
+
+
+def _resize_child_pty(master_fd: int) -> None:
+    columns, rows = _terminal_size()
+    _set_window_size(master_fd, columns=columns, rows=rows)
+
+
+def _set_window_size(fd: int, *, columns: int, rows: int) -> None:
+    try:
+        import fcntl
+        import struct
+
+        winsize = struct.pack("HHHH", rows, columns, 0, 0)
+        fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
+    except OSError:
+        return
 
 
 def _write_status(message: str) -> None:
