@@ -28,6 +28,7 @@ PROCESS_LOOKUP_ERRORS = (
     psutil.ZombieProcess,
     PermissionError,
 )
+STATUS_INTERVAL_SECONDS = 10.0
 
 
 def run_agent_cli(
@@ -68,6 +69,9 @@ def run_agent_cli(
         tty.setraw(stdin_fd)
 
     last_output_at = time.monotonic()
+    first_seen_by_pid: dict[int, float] = {}
+    ignored_pids: set[int] = set()
+    last_status_at = 0.0
     observations: list[ProcessObservation] = []
     recovered_fingerprints: set[str] = set()
 
@@ -104,11 +108,27 @@ def run_agent_cli(
                 last_output_at=last_output_at,
                 timeout_seconds=hung_timeout_seconds,
                 observations=observations,
+                first_seen_by_pid=first_seen_by_pid,
+                ignored_pids=ignored_pids,
             )
+            if now - last_status_at >= STATUS_INTERVAL_SECONDS:
+                _persist_recent_observations(store, observations)
+                watched_count = len(
+                    {
+                        observation.pid
+                        for observation in observations[-len(first_seen_by_pid) :]
+                        if observation.is_descendant and observation.pid not in ignored_pids
+                    }
+                )
+                _write_status(
+                    f"\n[deadman] monitoring {watched_count} owned descendant(s); "
+                    f"ignored baseline={len(ignored_pids)}\n"
+                )
+                last_status_at = now
             if signal is None or signal.fingerprint in recovered_fingerprints:
                 continue
 
-            store.add_process_observations(observations[-1:])
+            _persist_recent_observations(store, observations)
             store.add_signals((signal,))
             recovered_fingerprints.add(signal.fingerprint)
             _write_status(
@@ -123,6 +143,7 @@ def run_agent_cli(
                 target_pid=int(signal.details["pid"]),
                 evidence_id=signal.evidence_ids[0],
             )
+            store.add_action_result(signal.fingerprint, result)
             _write_status(f"[deadman] {result.message}\n")
             last_output_at = time.monotonic()
     finally:
@@ -142,19 +163,32 @@ def _detect_hung_descendant(
     last_output_at: float,
     timeout_seconds: float,
     observations: list[ProcessObservation],
+    first_seen_by_pid: dict[int, float],
+    ignored_pids: set[int],
 ) -> Signal | None:
     descendants = _live_descendant_pids(root_pid)
+    eligible_observations: list[ProcessObservation] = []
     for pid in descendants:
-        observations.append(
-            _observe_descendant(
-                root_pid=root_pid,
-                pid=pid,
-                observed_at=now,
-                last_output_at=last_output_at,
-            )
+        first_seen_at = first_seen_by_pid.setdefault(pid, now)
+        observation = _observe_descendant(
+            root_pid=root_pid,
+            pid=pid,
+            observed_at=now,
+            first_seen_at=first_seen_at,
         )
+        observations.append(observation)
+        if pid in ignored_pids:
+            continue
+        if _is_baseline_descendant(observation):
+            ignored_pids.add(pid)
+            continue
+        eligible_observations.append(observation)
+    stale_pids = set(first_seen_by_pid) - set(descendants)
+    for pid in stale_pids:
+        first_seen_by_pid.pop(pid, None)
+        ignored_pids.discard(pid)
     return detect_hung_process(
-        observations[-len(descendants) :] if descendants else (),
+        eligible_observations,
         now=now,
         config=DetectorConfig(hung_timeout_seconds=timeout_seconds),
     )
@@ -173,7 +207,7 @@ def _observe_descendant(
     root_pid: int,
     pid: int,
     observed_at: float,
-    last_output_at: float,
+    first_seen_at: float,
 ) -> ProcessObservation:
     try:
         process = psutil.Process(pid)
@@ -198,9 +232,52 @@ def _observe_descendant(
         is_running=is_running,
         is_descendant=is_descendant,
         observed_at=observed_at,
-        last_stdout_at=last_output_at,
-        last_stderr_at=last_output_at,
+        last_stdout_at=first_seen_at,
+        last_stderr_at=first_seen_at,
     )
+
+
+def _is_baseline_descendant(observation: ProcessObservation) -> bool:
+    command = " ".join(observation.command_line)
+    if _looks_like_user_command(command):
+        return False
+    return any(
+        marker in command
+        for marker in (
+            "mcp/server.mjs",
+            "node_repl",
+            "codex-code-mode-host",
+        )
+    )
+
+
+def _looks_like_user_command(command: str) -> bool:
+    return any(
+        marker in command
+        for marker in (
+            "python",
+            "pytest",
+            "node -e",
+            "npm ",
+            "bash",
+            "zsh",
+            "sh -c",
+            "curl",
+            "sleep",
+        )
+    )
+
+
+def _persist_recent_observations(
+    store: EvidenceStore,
+    observations: list[ProcessObservation],
+) -> None:
+    if not observations:
+        return
+    by_pid: dict[int, ProcessObservation] = {}
+    for observation in observations:
+        by_pid[observation.pid] = observation
+    store.add_process_observations(by_pid.values())
 
 
 def _poll_exit_code(pid: int) -> int | None:

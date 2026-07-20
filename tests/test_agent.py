@@ -72,3 +72,28 @@ def test_run_agent_cli_auto_recovers_hung_child(tmp_path: Path) -> None:
 
     assert exit_code != 0
     assert EvidenceStore(database).count("signals") == 1
+    assert EvidenceStore(database).count("action_results") == 1
+
+
+def test_run_agent_cli_detects_hung_child_despite_parent_chatter(tmp_path: Path) -> None:
+    script = (
+        "import subprocess, sys, time; "
+        "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)']); "
+        "\nwhile child.poll() is None:\n"
+        "    print('waiting for background terminal', flush=True)\n"
+        "    time.sleep(0.05)\n"
+        "raise SystemExit(child.returncode)"
+    )
+    database = tmp_path / "deadman.sqlite"
+
+    exit_code = run_agent_cli(
+        (sys.executable, "-c", script),
+        workspace=tmp_path,
+        database_path=database,
+        hung_timeout_seconds=0.2,
+        auto_recover=True,
+    )
+
+    assert exit_code != 0
+    assert EvidenceStore(database).count("signals") == 1
+    assert EvidenceStore(database).count("action_results") == 1
