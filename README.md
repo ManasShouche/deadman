@@ -2,11 +2,23 @@
 
 > The session died. The task did not.
 
-Deadman is a local recovery supervisor for Codex sessions. It watches a Codex process or recorded session evidence, detects bounded failure states, requests a typed diagnosis, applies only policy-approved recovery actions, verifies the result, and stores an auditable incident record.
+**The problem:** you give a coding agent a long autonomous task and walk away — then it gets stuck. A hung child process, a wedged dev server, an infinite retry loop. You come back to a dead session and burned tokens, with no safe way to recover it. Deadman is the supervisor that watches the agent, catches the stall, and recovers it — safely enough to leave running unattended.
 
-**Current local validation:** 1/1 isolated live attach recovery smoke completed; 0 recovery actions across 3 healthy supervised controls.
+**How it works** — a six-step loop that is entirely deterministic except for one bounded model call:
 
-It is not a replacement for Codex and it never gives a model shell, process-control, filesystem-write, or session-control tools. Deterministic code owns observation, policy, recovery, and verification.
+```text
+Observe → Detect → Diagnose → Recover → Verify → Report
+                  (GPT-5.6, bounded)
+```
+
+Deterministic code watches the process tree and detects a stuck state. Only then does it hand GPT-5.6 a compact evidence packet — and the model can **recommend exactly one typed action, nothing else**. It never gets shell, files, PIDs, or your API keys. Deterministic code checks that recommendation against policy, executes only what's approved (**off by default**), verifies the outcome, and writes an auditable incident. **A model recommendation is never permission to act** — that separation is the whole point.
+
+**See it work in 30 seconds — no Codex, no API key:**
+
+```bash
+git clone https://github.com/ManasShouche/deadman && cd deadman
+./scripts/deadman demo      # runs three recorded failure→recovery scenarios offline
+```
 
 ## What Can I Run?
 
@@ -20,26 +32,6 @@ It is not a replacement for Codex and it never gives a model shell, process-cont
 | Run the three replay scenarios together | `deadman demo` | Simulated only | Fast offline smoke test |
 
 `--auto-recover` is **off by default** for every command. Without it, Deadman records the signal, diagnosis, and policy result at the approval boundary instead of performing a recovery action.
-
-## Supported Platforms
-
-Deadman's data model, SQLite store, replay, report, `watch`, `attach`, and managed `run` paths are designed to run on macOS, Linux, and Windows. Live `run --hung-timeout` reads stdout and stderr through dedicated threads rather than `select()`, then uses `psutil` to inspect and recover only proven descendants.
-
-The interactive `agent` command remains macOS/Linux-only because its terminal passthrough depends on POSIX PTYs, `termios`, `fcntl`, `waitpid`, and Unix signal behavior. On Windows, use managed JSONL supervision:
-
-```powershell
-deadman run --hung-timeout 20 --auto-recover -- codex exec --json --sandbox workspace-write "task"
-```
-
-For an already-running interactive Codex session, use `attach` from a second PowerShell or Command Prompt in the same repository:
-
-```powershell
-codex --sandbox workspace-write
-# In a second terminal, from the same repository:
-deadman attach --hung-timeout 20 --auto-recover
-```
-
-Deadman reports the PTY boundary clearly instead of failing at import time or with a platform traceback. CI is configured for Windows, macOS, and Linux; Windows process ownership and termination remain fail-closed when `psutil` cannot inspect a process.
 
 ## Judge Quickstart
 
@@ -395,6 +387,26 @@ Recovery is bounded by process ownership and policy:
 - `watch` is always observe-only.
 - `attach` can act only on descendants of the live selected Codex root.
 - `--auto-recover` is required for automatic action execution.
+
+## Supported Platforms
+
+Deadman's data model, SQLite store, replay, report, `watch`, `attach`, and managed `run` paths are designed to run on macOS, Linux, and Windows. Live `run --hung-timeout` reads stdout and stderr through dedicated threads rather than `select()`, then uses `psutil` to inspect and recover only proven descendants.
+
+The interactive `agent` command remains macOS/Linux-only because its terminal passthrough depends on POSIX PTYs, `termios`, `fcntl`, `waitpid`, and Unix signal behavior. On Windows, use managed JSONL supervision:
+
+```powershell
+deadman run --hung-timeout 20 --auto-recover -- codex exec --json --sandbox workspace-write "task"
+```
+
+For an already-running interactive Codex session, use `attach` from a second PowerShell or Command Prompt in the same repository:
+
+```powershell
+codex --sandbox workspace-write
+# In a second terminal, from the same repository:
+deadman attach --hung-timeout 20 --auto-recover
+```
+
+Deadman reports the PTY boundary clearly instead of failing at import time or with a platform traceback. CI is configured for Windows, macOS, and Linux; Windows process ownership and termination remain fail-closed when `psutil` cannot inspect a process.
 
 ## Development
 
