@@ -6,6 +6,7 @@ from pathlib import Path
 
 from deadman.attach import (
     LiveCodexProcess,
+    _drop_nested_candidates,
     _looks_like_codex,
     _within_repo,
     discover_live_codex_processes,
@@ -58,6 +59,45 @@ def test_live_codex_process_label_prefers_session_id() -> None:
     )
     assert linked.label == "abc"
     assert unlinked.label == "pid:11"
+
+
+def test_drop_nested_candidates_keeps_top_most_ancestor(tmp_path: Path) -> None:
+    # A parent process that spawns a child mirrors `node <path>/codex` -> `codex`.
+    child_pid_file = tmp_path / "child.pid"
+    inner = (
+        "import os, pathlib, time; "
+        f"pathlib.Path({str(child_pid_file)!r}).write_text(str(os.getpid())); "
+        "time.sleep(30)"
+    )
+    root_script = (
+        "import subprocess, sys, time; "
+        f"subprocess.Popen([sys.executable, '-c', {inner!r}]); "
+        "time.sleep(30)"
+    )
+    root = subprocess.Popen([sys.executable, "-c", root_script])
+    try:
+        _wait_for(child_pid_file.exists, timeout=5.0)
+        child_pid = int(child_pid_file.read_text())
+        parent = LiveCodexProcess(
+            pid=root.pid,
+            cwd=tmp_path,
+            command_line=("node", "codex"),
+            create_time=1.0,
+            session_id=None,
+        )
+        child = LiveCodexProcess(
+            pid=child_pid,
+            cwd=tmp_path,
+            command_line=("codex",),
+            create_time=2.0,
+            session_id=None,
+        )
+
+        kept = _drop_nested_candidates([child, parent])
+
+        assert [process.pid for process in kept] == [root.pid]
+    finally:
+        _terminate(root)
 
 
 def test_attach_supervisor_recovers_externally_launched_hung_child(tmp_path: Path) -> None:

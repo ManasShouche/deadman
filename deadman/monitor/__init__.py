@@ -5,7 +5,6 @@ from deadman.monitor.descendants import (
     executable_name,
     is_baseline_descendant,
     live_descendant_pids,
-    looks_like_user_command,
     observe_descendant,
 )
 from deadman.monitor.process import PROTECTED_PIDS, ProcessMonitor
@@ -18,7 +17,6 @@ __all__ = [
     "executable_name",
     "is_baseline_descendant",
     "live_descendant_pids",
-    "looks_like_user_command",
     "observe_descendant",
     "workspace_progress_fingerprint",
 ]

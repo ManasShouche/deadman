@@ -1,166 +1,315 @@
 # Deadman
 
-> The session died. The task didn't.
+> The session died. The task did not.
 
-Deadman is a local recovery harness for Codex sessions. It will observe a supervised Codex process, detect bounded pathological states, obtain an evidence-grounded GPT-5.6 recommendation, enforce deterministic policy, and verify recovery.
+Deadman is a local recovery supervisor for Codex sessions. It watches a Codex process or recorded session evidence, detects bounded failure states, requests a typed diagnosis, applies only policy-approved recovery actions, verifies the result, and stores an auditable incident record.
 
-## Current status
+It is not a replacement for Codex and it never gives a model shell, process-control, filesystem-write, or session-control tools. Deterministic code owns observation, policy, recovery, and verification.
 
-This repo now has the deterministic offline MVP path:
+## What Can I Run?
 
-- Codex JSONL parsing with conservative capability detection.
-- SQLite evidence persistence for raw events, normalized events, capabilities, process observations, and signals.
-- Process ownership/liveness observations and pure detectors for `HUNG_PROCESS`, `REPEATED_FAILURE`, `NO_PROGRESS`, and `SESSION_BUDGET_RISK`.
-- Evidence-bound fake diagnosis, deterministic policy checks, fixture execution simulation, verification, and terminal reports.
-- Rich terminal panels for `deadman run`, `deadman demo`, `deadman replay`, and `deadman report`.
-- Live hung-child detection and policy-gated descendant termination through `deadman run --hung-timeout ... --auto-recover -- <command>`.
-- Optional guided Codex resume after verified recovery through `--resume-after-recovery`.
-- Detection of Codex JSONL traces that finish while a `command_execution` item is still `in_progress`; with `--auto-recover`, Deadman resumes the Codex session with cleanup guidance.
-- PTY supervision for the interactive Codex CLI through `deadman agent -- codex ...`.
-- Interactive TUI recovery tracks owned descendant process age separately from Codex status chatter, ignores known Codex helper processes, and terminates the proven owned process subtree when recovery is approved.
-- Observe-only pairing with an existing interactive CLI session through `deadman watch`.
-- Active recovery of a Codex session started in another terminal through `deadman attach`: Deadman discovers the live Codex process by repository, proves the root PID through the OS process table, and runs the same detect → diagnose → policy → terminate → verify → record loop as managed mode.
-- A single shared recovery and incident pipeline behind `run`, `agent`, and `attach`, so every mode records an auditable incident (signal, diagnosis, policy, action, verification, report), not just a silent action.
+| Need | Command | Can recover? | Best use |
+| --- | --- | --- | --- |
+| Supervise a non-interactive command that Deadman launches | `deadman run -- <command>` | Yes, with `--auto-recover` | `codex exec --json` and scripts |
+| Launch and supervise the interactive Codex TUI | `deadman agent -- codex ...` | Yes, with `--auto-recover` | A new interactive Codex session |
+| Supervise a Codex TUI already running in another terminal | `deadman attach` | Yes, with `--auto-recover` | Real two-terminal recovery |
+| Read one persisted Codex session | `deadman watch` | No | Investigation and evidence only |
+| Run credential-free shipped scenarios | `deadman replay <trace>` | Simulated only | Judge and offline testing |
+| Run the three replay scenarios together | `deadman demo` | Simulated only | Fast offline smoke test |
 
-`deadman run` is for `codex exec --json` and other non-interactive commands. When `--hung-timeout` is supplied, it also monitors the live process tree for a proven stuck descendant. `--auto-recover` is off by default; without that flag, Deadman records the diagnosis and blocks at the approval boundary. Add `--auto-recover` only when you want policy-approved recovery actions to execute automatically. Add `--resume-after-recovery` when you want Deadman to resume a recovered session with evidence-grounded guidance. Automatic resume requires the original Codex command to specify `--sandbox read-only` or `--sandbox workspace-write`; Deadman retains that sandbox, forces JSONL output, and escalates unless the resumed turn emits a completion event. If Codex exits while reporting an unfinished background command, `--auto-recover` uses the same guarded resume path with cleanup guidance. Diagnosis defaults to `auto`: an existing `OPENAI_API_KEY` wins, then Deadman loads the current repository's `.env`, otherwise it visibly uses the deterministic fixture fallback. Use `--diagnosis openai` to require live GPT-5.6 and fail fast when no key is configured. `deadman agent` is for the interactive Codex CLI; it runs the TUI inside a pseudo-terminal, preserves normal terminal dimensions, prints periodic monitoring status, and monitors child processes in the background.
+`--auto-recover` is **off by default** for every command. Without it, Deadman records the signal, diagnosis, and policy result at the approval boundary instead of performing a recovery action.
 
-## Prerequisites
-
-- Python 3.11 or later
-- A locally authenticated Codex CLI for the adapter compatibility capture
-
-## Fresh clone quick start
-
-After cloning, enter the repo first. The clone URL is not a shell command by itself.
+## Judge Quickstart
 
 ```bash
 git clone https://github.com/ManasShouche/deadman
 cd deadman
 ./scripts/deadman config check
+./scripts/live-attach-smoke
 ```
 
-`./scripts/deadman` creates `.venv`, installs Deadman in editable mode, and then forwards your arguments to the real CLI. For the isolated interactive Codex TUI supervision smoke test:
+`./scripts/deadman` creates `.venv`, installs Deadman in editable mode, and forwards its arguments to the real CLI. The attach smoke is isolated, credential-free, and exercises live process discovery, hung-child detection, recovery, verification, and SQLite persistence.
+
+For offline scenarios without Codex or an API key:
 
 ```bash
-./scripts/live-tui-smoke
+./scripts/deadman demo
+./scripts/deadman replay scenarios/recordings/hung-process.jsonl
+./scripts/deadman report repeated-failure
 ```
 
-The smoke script runs Codex in `/private/tmp/deadman-codex-tui-test`, keeps the test isolated from this repository, and enables `--auto-recover` so Deadman can terminate a proven hung descendant. To install the contributor tools for tests and linting:
+## Real Two-Terminal Recovery
+
+This is the main live scenario. It uses a real interactive Codex TUI and Deadman attaches from a second terminal.
+
+Terminal 1, in an isolated repository:
+
+```bash
+mkdir -p /private/tmp/deadman-real-attach
+cd /private/tmp/deadman-real-attach
+git init
+
+codex --no-alt-screen --sandbox workspace-write --ask-for-approval never \
+  "Do not edit files. Run this exact command and wait for it:\n+python3 -c 'import subprocess; raise SystemExit(subprocess.Popen([\"sleep\", \"600\"]).wait())'\nDo not interrupt it yourself."
+```
+
+Wait until Codex reports that the background command is running. Then open Terminal 2 in the same repository:
+
+```bash
+cd /private/tmp/deadman-real-attach
+
+/path/to/deadman/.venv/bin/deadman attach \
+  --hung-timeout 20 \
+  --auto-recover \
+  --diagnosis fake
+```
+
+Replace `/path/to/deadman` with your clone path. Use `--diagnosis openai` only when `OPENAI_API_KEY` is configured and a live GPT-5.6 diagnosis is required. `fake` keeps this process-recovery test deterministic while still using the real Codex CLI and real OS process tree.
+
+Expected result after about 20 seconds:
+
+```text
+Status       recovered
+Signal       HUNG_PROCESS
+Hung pid     <owned python or sleep pid>
+Action       terminated descendant process tree (...)
+Verification resolved
+Final state  RESOLVED
+```
+
+Codex should stay open. Deadman never signals the selected Codex process itself; it can signal only a freshly proven descendant.
+
+Inspect the recorded incident from Terminal 2:
+
+```bash
+sqlite3 .deadman/deadman.sqlite 'select id, state from incidents;'
+sqlite3 .deadman/deadman.sqlite 'select count(*) from signals; select count(*) from diagnoses; select count(*) from action_results; select count(*) from verification_results;'
+```
+
+## Command Reference
+
+All commands resolve the default database to `<git-root>/.deadman/deadman.sqlite`, not the shell's current directory. Startup always prints the resolved SQLite path and whether auto recovery is on.
+
+### `deadman run`
+
+Use `run` when Deadman should start the command itself. It is the supported surface for non-interactive `codex exec --json` sessions.
+
+```bash
+deadman run [OPTIONS] -- <command> [command arguments]
+```
+
+Examples:
+
+```bash
+# Capture a normal JSONL Codex run.
+deadman run -- codex exec --json --sandbox workspace-write "Fix the failing test"
+
+# Detect a hung owned child after 20 seconds and recover it automatically.
+deadman run --hung-timeout 20 --auto-recover -- \
+  codex exec --json --sandbox workspace-write \
+  "Run a command that starts a child process and waits forever"
+
+# After verified recovery, resume the Codex exec session with grounded guidance.
+deadman run --hung-timeout 60 --auto-recover --resume-after-recovery -- \
+  codex exec --json --sandbox workspace-write "Fix the fixture task"
+```
+
+| Option | Meaning |
+| --- | --- |
+| `--database PATH` | Override the SQLite database path. |
+| `--timeout SECONDS` | Stop the supervised command after this duration. |
+| `--hung-timeout SECONDS` | Enable live hung-descendant detection after this idle time. |
+| `--auto-recover` | Permit policy-approved recovery actions. Off by default. |
+| `--diagnosis auto|fake|openai` | Use configured OpenAI, deterministic fixture diagnosis, or require OpenAI. |
+| `--model MODEL` | Model for `--diagnosis openai`; default `gpt-5.6`. |
+| `--resume-after-recovery` | Resume a verified recovered `codex exec` session. Requires an explicit safe Codex sandbox. |
+
+The terminal summary includes: `Status`, `Return code`, raw and normalized event counts, session ID when available, diagnosis backend, signal, recommended action, policy result, verification verdict, optional resume fields, and SQLite path.
+
+### `deadman agent`
+
+Use `agent` when Deadman should launch the interactive Codex TUI inside a supervised PTY.
+
+```bash
+deadman agent [OPTIONS] -- codex [codex arguments]
+```
+
+Example:
+
+```bash
+deadman agent --hung-timeout 20 --auto-recover -- \
+  codex --no-alt-screen --sandbox workspace-write
+```
+
+| Option | Meaning |
+| --- | --- |
+| `--database PATH` | Override the SQLite database path. |
+| `--hung-timeout SECONDS` | Idle duration before an owned descendant is considered hung; default `60`. |
+| `--auto-recover` | Permit termination of a proven hung descendant. Off by default. |
+
+While Codex runs, Deadman prints periodic status such as:
+
+```text
+[deadman] monitoring 1 owned descendant(s); ignored baseline=3
+[deadman] HUNG_PROCESS detected for pid 12345
+[deadman] recovered: terminated descendant process tree (2 processes)
+```
+
+Codex itself and known Codex helper processes are baseline processes, never recovery targets. The interactive `agent` surface currently uses deterministic fixture diagnosis; live `--diagnosis openai` options are available on `run` and `attach`.
+
+### `deadman attach`
+
+Use `attach` in a second terminal when Codex was launched independently. Deadman discovers live Codex processes whose working directory is inside the current Git repository. If one process matches, it selects it; if several match, it displays candidates or accepts `--pid`.
+
+```bash
+deadman attach [OPTIONS]
+```
+
+Examples:
+
+```bash
+# Observe a live Codex process but do not act.
+deadman attach
+
+# Recover an owned hung descendant of the selected Codex process.
+deadman attach --auto-recover --hung-timeout 20
+
+# Select a known candidate and require live GPT-5.6 diagnosis.
+deadman attach --pid 12345 --hung-timeout 60 --auto-recover \
+  --diagnosis openai --model gpt-5.6
+```
+
+| Option | Meaning |
+| --- | --- |
+| `--pid PID` | Select a specific discovered Codex root. |
+| `--database PATH` | Override the SQLite database path. |
+| `--hung-timeout SECONDS` | Idle duration before a descendant is considered hung; default `60`. |
+| `--auto-recover` | Permit recovery of a proven owned descendant. Off by default. |
+| `--diagnosis auto|fake|openai` | Diagnosis backend. `auto` uses OpenAI only when a key is configured. |
+| `--model MODEL` | Model for live OpenAI diagnosis; default `gpt-5.6`. |
+| `--poll-interval SECONDS` | Process observation interval; default `0.5`. |
+
+`attach` proves the live process root and can recover descendants of that root. It does not yet establish an exact one-to-one link between the chosen process and a persisted Codex session file when several sessions use the same repository.
+
+### `deadman watch`
+
+Use `watch` to inspect one persisted interactive Codex session. It reads append-only session events under `$CODEX_HOME/sessions`, enforces an exact repository match, and never performs process control.
+
+```bash
+deadman watch [OPTIONS]
+```
+
+Examples:
+
+```bash
+# Choose from matching sessions interactively.
+deadman watch
+
+# Read one known session once and exit.
+deadman watch --session <session-id> --once
+
+# Tail a known session every second.
+deadman watch --session <session-id> --poll-interval 1
+```
+
+| Option | Meaning |
+| --- | --- |
+| `--session ID` | Explicit persisted Codex session ID. |
+| `--database PATH` | Override the SQLite database path. |
+| `--poll-interval SECONDS` | Session-file read interval; default `0.5`. |
+| `--once` | Ingest available events, render one snapshot, then exit. |
+
+The watch panel reports mode, session ID, workspace, turn state, event counts, latest event, observed capabilities, active signals, and `ownership=unproven`. Use `attach` when active process recovery is needed.
+
+### `deadman replay`, `demo`, and `report`
+
+These commands are deterministic and do not need Codex, network access, or an API key.
+
+```bash
+# Run one fixture through normalizer, detector, diagnosis fixture, policy,
+# simulated action, verifier, and renderer.
+deadman replay scenarios/recordings/hung-process.jsonl
+
+# Run all shipped fixtures.
+deadman demo
+
+# Render the report for one shipped replay incident.
+deadman report repeated-failure
+```
+
+Shipped replay scenarios:
+
+| Fixture | Signal | Recovery outcome |
+| --- | --- | --- |
+| `hung-process.jsonl` | `HUNG_PROCESS` | `TERMINATE_DESCENDANT_PROCESS -> RESOLVED` |
+| `repeated-failure.jsonl` | `REPEATED_FAILURE` | `CANCEL_AND_RESUME -> RESOLVED` |
+| `session-handoff.jsonl` | `SESSION_BUDGET_RISK` | `CHECKPOINT_AND_RESPAWN -> RESOLVED` |
+
+### `deadman config check`
+
+```bash
+deadman config check
+```
+
+This displays whether OpenAI credentials are available, their source without revealing a secret, the project `.env` path, the resolved SQLite path, offline replay readiness, and the fact that Codex TUI authentication is never read by Deadman.
+
+## Evidence and Incident Fields
+
+Each incident is stored in SQLite. The relevant records are:
+
+| Record | What it contains |
+| --- | --- |
+| Raw events | Original adapter evidence, including malformed or unknown JSONL. |
+| Normalized events | Stable event types used by detectors and reports. |
+| Process observations | Root PID, PID, parent PID, command line, descendant proof, observation time, and output activity fields. |
+| Signals | Detector kind, severity, evidence IDs, fingerprint, threshold details, and target PID. |
+| Diagnosis | Typed recommended action, confidence, citations, and guidance. |
+| Policy decision | Allowed or rejected action and reason. |
+| Action result | Attempted action, success state, evidence IDs, and bounded executor message. |
+| Verification result | `resolved`, progress-fingerprint status, success signal, and reason. |
+| Incident transitions | Timestamp, state, actor, reason, evidence IDs, and action fingerprint. |
+| Report | Human-readable timeline and prevention guidance. |
+
+The main terminal statuses are:
+
+| Status | Meaning |
+| --- | --- |
+| `completed` | The supervised run ended with completion evidence. |
+| `awaiting_approval` | A signal was found, but recovery was not permitted. |
+| `recovered` | A bounded recovery action was verified. |
+| `recovered_and_resumed` | A recovered Codex exec session emitted verified completion after resume. |
+| `escalated` | Recovery was unavailable, failed, or did not verify. |
+| `timed_out` | The configured supervised-command timeout was reached. |
+
+## Credentials and Safety
+
+For live GPT-5.6 diagnosis, set `OPENAI_API_KEY` in the environment or in the ignored project `.env`:
+
+```bash
+cp .env.example .env
+# Add OPENAI_API_KEY to .env
+deadman config check
+```
+
+`--diagnosis auto` prefers an existing environment key, then the repository `.env`, then visibly falls back to deterministic fixture diagnosis. `--diagnosis openai` fails fast if no key is available. Deadman never reads, copies, displays, or persists Codex TUI authentication state.
+
+Recovery is bounded by process ownership and policy:
+
+- Deadman never signals its own process, its parent, PID 1, or another protected PID.
+- A target is re-checked as a descendant immediately before signalling.
+- `watch` is always observe-only.
+- `attach` can act only on descendants of the live selected Codex root.
+- `--auto-recover` is required for automatic action execution.
+
+## Development
 
 ```bash
 ./scripts/setup --dev
-```
-
-## Local setup
-
-```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install --upgrade pip
-.venv/bin/python -m pip install -e ".[dev]"
-cp .env.example .env
-.venv/bin/deadman config check
-.venv/bin/deadman
-.venv/bin/deadman run -- .venv/bin/python -c 'import json; print(json.dumps({"type":"thread.started","thread_id":"demo"})); print(json.dumps({"type":"item.completed","item":{"type":"agent_message"}}))'
-.venv/bin/deadman run --hung-timeout 0.5 --auto-recover -- .venv/bin/python -c 'import json, subprocess, sys; child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"]); child.wait(); print(json.dumps({"type":"thread.started","thread_id":"live"})); print(json.dumps({"type":"item.completed","item":{"type":"agent_message"}}))'
-.venv/bin/deadman agent --hung-timeout 20 --auto-recover -- codex --sandbox workspace-write
-.venv/bin/deadman attach --auto-recover --hung-timeout 20
-.venv/bin/deadman watch --session <session-id> --once
-.venv/bin/deadman replay scenarios/recordings/hung-process.jsonl
-.venv/bin/deadman replay scenarios/recordings/repeated-failure.jsonl
-.venv/bin/deadman replay scenarios/recordings/session-handoff.jsonl
-.venv/bin/deadman demo
-.venv/bin/deadman report repeated-failure
 .venv/bin/python -m pytest
 .venv/bin/ruff check .
 .venv/bin/mypy .
 ```
 
-The no-argument `deadman` command reports the baseline status. `deadman replay` performs the offline pipeline without Codex, an OpenAI key, or network access. `deadman run -- <command>` records a completed supervised command and writes `.deadman/deadman.sqlite` at the Git repository root by default, not necessarily the current shell directory. Deadman prints the resolved SQLite path and auto-recover state on startup. Add `--hung-timeout <seconds>` to enable live hung-child detection; add `--auto-recover` only when you want policy-approved recovery actions to execute automatically. Add `--resume-after-recovery` to continue a recovered Codex session with evidence-grounded guidance.
+The project is a Python terminal wrapper using Typer, Rich, SQLite, Pydantic, `psutil`, and the OpenAI SDK. Rust and a Codex plugin/MCP companion are explicitly roadmap items; the external supervisor owns the failure domain for this MVP.
 
-Automatic process recovery requires proven process ownership. Deadman proves it two ways: by launching the supervised process itself (`deadman run -- codex exec --json ...` for non-interactive JSONL runs, `deadman agent -- codex ...` for the interactive TUI), or by discovering a Codex process you started independently and matching it to the repository through the live OS process table (`deadman attach`). When a watched user command is stuck, Deadman terminates the proven owned descendant subtree, not just the first detected PID, so inner sleepers started by a background terminal are cleaned up too.
-
-`deadman watch` reads persisted interactive Codex events from `$CODEX_HOME/sessions`. It requires explicit session pairing, enforces an exact repository match, and is observe-only because persisted events do not prove process ownership. Use `deadman watch` in a terminal to select a matching session, or pass `--session <id>` explicitly. `--once` ingests the available stream and exits.
-
-### `deadman attach` — recover a Codex session from another terminal
-
-`deadman attach` supervises a Codex session you started yourself in a separate terminal, in the same repository, and can actively recover it. Where `deadman watch` is limited to observation because a persisted session file cannot prove ownership of a running process, `deadman attach` instead discovers the **live** Codex process through the OS process table and matches it to the repository. A live-process match proves the root PID, so Deadman may terminate a proven hung descendant of that Codex process — the same bounded, policy-gated action managed mode uses.
-
-Run Codex in one terminal at your repository root, then in a second terminal at the same repository run:
-
-```bash
-# Approval mode: detect and report a hung child, but do not act.
-.venv/bin/deadman attach
-
-# Act on it: terminate the proven hung descendant and record the incident.
-.venv/bin/deadman attach --auto-recover --hung-timeout 20
-```
-
-Deadman lists the Codex processes it found in the repository, auto-selects when there is exactly one (pass `--pid <pid>` to choose explicitly), and then supervises until the Codex process exits or you press Ctrl-C. `--auto-recover` is required before any termination; without it Deadman opens an `AWAITING_APPROVAL` incident and leaves the process untouched. It never signals the Codex process itself, only proven hung descendants of it, and never a protected PID. Diagnosis honors the same `--diagnosis auto|fake|openai` and `--model` flags as `deadman run`.
-
-Because attach mode uses no pseudo-terminal and no pipe polling — only `psutil` process inspection — it is the most portable path and runs on macOS, Linux, and Windows. (`deadman agent` and the `--hung-timeout` streaming path in `deadman run` rely on Unix pseudo-terminals and `select`, so they target macOS and Linux.)
-
-For a self-contained, credential-free proof of the whole attach pipeline (isolated repo, stand-in Codex process, real Deadman recovery and incident record):
-
-```bash
-./scripts/live-attach-smoke
-```
-
-For live GPT-5.6 diagnosis, set `OPENAI_API_KEY` in the shell or in the ignored project `.env`. Deadman never reads or copies Codex TUI authentication state, and it never prints the key. Offline replay needs no credentials.
-
-## Safety model
-
-Deadman never gives a model shell access or direct process/session control. Deterministic code owns observation, policy enforcement, execution, and verification; GPT-5.6 can recommend only typed, evidence-bound actions.
-
-## Scope decisions
-
-The MVP is a Python terminal wrapper. Rust is a future option for a native wrapper/TUI shell once the behavior is stable. A Codex plugin/MCP companion is also roadmap-only; it should not own recovery because it cannot supervise a Codex session that is already stuck.
-
-## Adapter evidence
-
-`scenarios/recordings/` holds replay fixtures and approved harmless compatibility captures. The capture's capability report documents only fields observed from the installed Codex CLI; it never assumes an undocumented event schema or hidden context-window telemetry.
-
-Current replay fixtures:
-
-```bash
-.venv/bin/deadman replay scenarios/recordings/hung-process.jsonl
-.venv/bin/deadman replay scenarios/recordings/repeated-failure.jsonl
-.venv/bin/deadman replay scenarios/recordings/session-handoff.jsonl
-```
-
-Current live capture command shape:
-
-```bash
-.venv/bin/deadman run -- codex exec --json --sandbox workspace-write "Fix the failing test"
-.venv/bin/deadman run --hung-timeout 60 --auto-recover --diagnosis openai -- codex exec --json --sandbox workspace-write "Fix the fixture task"
-.venv/bin/deadman run --hung-timeout 60 --auto-recover --resume-after-recovery -- codex exec --json --sandbox workspace-write "Fix the fixture task"
-.venv/bin/deadman run --hung-timeout 20 --auto-recover -- codex exec --json --sandbox workspace-write "Run a command that starts a child process and waits forever"
-.venv/bin/deadman agent --hung-timeout 20 --auto-recover -- codex --no-alt-screen --sandbox workspace-write
-./scripts/live-tui-smoke
-.venv/bin/deadman watch --session <session-id>
-```
-
-Live attach against a real Codex session (two terminals, same repository):
-
-```bash
-# Terminal 1 — start Codex yourself and give it a task that blocks on a child:
-codex --sandbox workspace-write
-#   then ask it, e.g.: "Run a shell command that sleeps for 300 seconds."
-
-# Terminal 2 — attach from the same repository and recover the hung child:
-.venv/bin/deadman attach --auto-recover --hung-timeout 20
-
-# Or verify the full attach pipeline with no Codex and no key:
-./scripts/live-attach-smoke
-```
-
-Expected demo output:
-
-```text
-hung-process: HUNG_PROCESS -> TERMINATE_DESCENDANT_PROCESS -> RESOLVED
-repeated-failure: REPEATED_FAILURE -> CANCEL_AND_RESUME -> RESOLVED
-session-handoff: SESSION_BUDGET_RISK -> CHECKPOINT_AND_RESPAWN -> RESOLVED
-```
-
-## Codex and GPT-5.6
-
-Codex is used to build and review Deadman. GPT-5.6 will be used at runtime only for constrained diagnosis and checkpoint handoff after a deterministic incident signal opens. The collaboration record is in [`CODEX_LOG.md`](CODEX_LOG.md).
+[`CODEX_LOG.md`](CODEX_LOG.md) records the implementation and validation history.

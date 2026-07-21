@@ -118,29 +118,37 @@ def observe_descendant(
     )
 
 
+# Persistent Codex helper executables observed in a live Codex 0.144.4 tree.
+# The interactive Codex CLI is `node <path>/codex` -> `codex` (rust binary),
+# which spawns `node_repl`, `node ./mcp/server.mjs`, and `codex-code-mode-host`.
+# None of these are recoverable user work, so they are never termination targets.
+BASELINE_HELPER_EXECUTABLES = frozenset(
+    {"codex", "node_repl", "codex-code-mode-host"}
+)
+
+
 def is_baseline_descendant(observation: ProcessObservation) -> bool:
-    """Classify a persistent, non-recoverable helper process from its argv."""
+    """Classify a persistent, non-recoverable Codex helper process from its argv."""
 
     command_line = observation.command_line
     executable = executable_name(command_line)
     # The interactive Codex process carries the user's prompt in argv. Never
     # classify it from arbitrary prompt text such as "run Python".
-    if executable == "codex":
+    if executable in BASELINE_HELPER_EXECUTABLES:
         return True
-    if looks_like_user_command(command_line):
-        return False
-    return executable in {"node_repl", "codex-code-mode-host"} or "mcp/server.mjs" in command_line
+    if _runs_codex_mcp_server(command_line):
+        return True
+    return False
 
 
-def looks_like_user_command(command_line: tuple[str, ...]) -> bool:
-    """Return whether argv looks like a recoverable user-launched command."""
+def _runs_codex_mcp_server(command_line: tuple[str, ...]) -> bool:
+    """Match Codex's MCP server regardless of how its path is spelled in argv.
 
-    executable = executable_name(command_line)
-    if executable in {"pytest", "npm", "bash", "zsh", "sh", "curl", "sleep"}:
-        return True
-    if "python" in executable:
-        return True
-    return executable == "node" and "-e" in command_line[1:]
+    Observed as `node ./mcp/server.mjs`; a bare element check misses the
+    `./` prefix, so match any argument path that ends in `mcp/server.mjs`.
+    """
+
+    return any(token.replace("\\", "/").endswith("mcp/server.mjs") for token in command_line)
 
 
 def executable_name(command_line: tuple[str, ...]) -> str:

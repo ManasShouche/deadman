@@ -79,6 +79,12 @@ def discover_live_codex_processes(
             )
         )
 
+    # The interactive Codex CLI is a `node <path>/codex` wrapper whose child is
+    # the `codex` rust binary, and both share the repo cwd. Collapse a candidate
+    # to its top-most matching ancestor so the user picks one process, not a
+    # parent/child pair; supervising the ancestor still covers the whole tree.
+    matches = _drop_nested_candidates(matches)
+
     # Newest process first so the default selection is the session just started.
     return tuple(sorted(matches, key=lambda match: match.create_time, reverse=True))
 
@@ -204,6 +210,22 @@ def _persist_observations(
         return
     by_pid = {observation.pid: observation for observation in tracker.observations}
     store.add_process_observations(by_pid.values(), session_id=session_id)
+
+
+def _drop_nested_candidates(matches: list[LiveCodexProcess]) -> list[LiveCodexProcess]:
+    """Drop candidates whose ancestor is also a candidate, keeping the ancestor."""
+
+    candidate_pids = {match.pid for match in matches}
+    kept: list[LiveCodexProcess] = []
+    for match in matches:
+        try:
+            ancestor_pids = {parent.pid for parent in psutil.Process(match.pid).parents()}
+        except PROCESS_LOOKUP_ERRORS:
+            ancestor_pids = set()
+        if candidate_pids & ancestor_pids:
+            continue
+        kept.append(match)
+    return kept
 
 
 def _looks_like_codex(name: str | None, command_line: list[str] | None) -> bool:

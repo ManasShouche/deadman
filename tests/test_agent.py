@@ -78,6 +78,42 @@ def test_interactive_codex_prompt_text_never_marks_codex_as_recoverable() -> Non
     assert is_baseline_descendant(observation)
 
 
+def _observation(command_line: tuple[str, ...]) -> ProcessObservation:
+    return ProcessObservation(
+        evidence_id="obs",
+        root_pid=100,
+        pid=101,
+        parent_pid=100,
+        command_line=command_line,
+        is_running=True,
+        is_descendant=True,
+        observed_at=1.0,
+    )
+
+
+def test_real_codex_helper_processes_are_baseline() -> None:
+    # Observed shapes from a live Codex 0.144.4 process tree.
+    helpers = [
+        ("node", "./mcp/server.mjs"),
+        ("/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node_repl",),
+        ("/opt/homebrew/lib/node_modules/.../bin/codex-code-mode-host",),
+        ("/opt/homebrew/lib/node_modules/.../vendor/aarch64-apple-darwin/bin/codex",),
+    ]
+    for command_line in helpers:
+        assert is_baseline_descendant(_observation(command_line)), command_line
+
+
+def test_user_commands_are_recoverable_not_baseline() -> None:
+    user_commands = [
+        ("/bin/sleep", "300"),
+        ("bash", "-lc", "sleep 300"),
+        ("python", "-c", "import time; time.sleep(9)"),
+        ("/usr/local/bin/some-service", "--serve"),
+    ]
+    for command_line in user_commands:
+        assert not is_baseline_descendant(_observation(command_line)), command_line
+
+
 def test_run_agent_cli_auto_recovers_hung_child(tmp_path: Path) -> None:
     script = (
         "import subprocess, sys; "

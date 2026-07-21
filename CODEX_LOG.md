@@ -132,3 +132,8 @@ This append-only log records how Codex and the developer built Deadman. It is de
 - **Goal:** ensure the interactive TUI supervisor cannot terminate Codex because task text resembles a shell command.
 - **Evidence:** a live TUI incident selected the Codex PID after the prompt mentioned Python, then terminated its descendant subtree.
 - **Codex contribution:** classify Codex and known helper executables from argv structure, and identify recoverable user commands from their executable and flags rather than arbitrary prompt text.
+
+## 2026-07-21 — Workflow-first README
+
+- **Goal:** make the shipped CLI usable without reading implementation code or inferring which supervision mode applies.
+- **Codex contribution:** rewrote the README around mode selection, real two-terminal recovery, per-command options, expected output, persisted evidence fields, status meanings, and the approval and ownership boundaries.
