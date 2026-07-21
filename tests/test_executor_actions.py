@@ -141,10 +141,10 @@ def test_terminate_descendant_process_rejects_orphaned_setsid_grandchild() -> No
 
 def _pid_is_running(pid: int) -> bool:
     try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
+        process = psutil.Process(pid)
+        return process.is_running() and process.status() != psutil.STATUS_ZOMBIE
+    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
         return False
-    return True
 
 
 def test_write_checkpoint_handoff_stays_under_deadman_directory(tmp_path: Path) -> None:

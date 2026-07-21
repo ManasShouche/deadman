@@ -43,7 +43,14 @@ def test_workspace_progress_fingerprint_includes_test_and_command_summary(tmp_pa
 
 def _git(workspace: Path, *args: str) -> None:
     subprocess.run(
-        ["git", *args],
+        [
+            "git",
+            "-c",
+            "user.name=Deadman Tests",
+            "-c",
+            "user.email=deadman-tests@example.invalid",
+            *args,
+        ],
         cwd=workspace,
         check=True,
         capture_output=True,

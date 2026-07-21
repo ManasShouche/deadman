@@ -100,10 +100,9 @@ def test_sanitized_cli_contract_fixture_replays_equivalently(tmp_path: Path) -> 
     target = codex_home / "sessions" / "2026" / "07" / "18" / "fixture.jsonl"
     target.parent.mkdir(parents=True)
     fixture = Path("scenarios/recordings/codex-session-cli-0.144.4.jsonl")
-    target.write_text(
-        fixture.read_text(encoding="utf-8").replace("/sanitized/repository", str(workspace)),
-        encoding="utf-8",
-    )
+    events = [json.loads(line) for line in fixture.read_text(encoding="utf-8").splitlines()]
+    events[0]["payload"]["cwd"] = str(workspace)
+    target.write_text("".join(json.dumps(event) + "\n" for event in events), encoding="utf-8")
     candidate = discover_cli_sessions(workspace, codex_home=codex_home)[0]
 
     snapshot = ingest_session(candidate, EvidenceStore(tmp_path / "fixture.sqlite"))

@@ -148,3 +148,8 @@ This append-only log records how Codex and the developer built Deadman. It is de
 
 - **Goal:** prevent Unix-only PTY and pipe-polling code from breaking the complete CLI on Windows.
 - **Codex contribution:** made POSIX PTY imports optional, kept `agent` explicitly macOS/Linux-only, and replaced `run --hung-timeout` pipe polling with reader threads so managed live supervision has a Windows-compatible I/O path. Added platform-focused tests and a Windows/macOS/Linux CI matrix; process actions still fail closed when ownership inspection is unavailable.
+
+## 2026-07-21 — Cross-platform CI repair
+
+- **Evidence:** the first three-platform run failed on Typer 0.27 output drift, missing Git author configuration, Windows-incompatible `os.kill(pid, 0)`, and invalid JSON created by injecting a Windows path with string replacement.
+- **Codex contribution:** capped Typer below the incompatible release and made the affected fixtures self-contained and path-safe without skipping Windows coverage.
