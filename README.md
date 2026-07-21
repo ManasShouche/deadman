@@ -411,6 +411,8 @@ The project is a Python terminal wrapper using Typer, Rich, SQLite, Pydantic, `p
 
 Codex was used as the implementation and review partner throughout the project, with the human retaining design and safety decisions.
 
+- A Codex web planning thread accelerated the initial product framing and core architecture: Deadman would be an external supervisor rather than a plugin, deterministic code would own all process actions, GPT-5.6 would recommend only typed recoveries, and uncertain process ownership would always escalate instead of acting.
+- The implementation thread turned those decisions into the repository: process monitors, detectors, policy gates, recovery executors, verification, persistence, live supervision modes, tests, and the judge workflow.
 - It translated the recovery specification into the Python package structure, typed domain models, deterministic detector pipeline, SQLite evidence store, and CLI commands.
 - It implemented and reviewed the live `run`, PTY-backed `agent`, live-process `attach`, and persisted-session `watch` modes.
 - It created the replay fixtures, ownership tests, verifier failure tests, policy-evidence rejection tests, and fresh-clone scripts used to make the judge path reproducible.
@@ -419,6 +421,6 @@ Codex was used as the implementation and review partner throughout the project, 
 
 At runtime, GPT-5.6 is deliberately constrained to evidence-bound, typed diagnosis and handoff guidance. It never receives process or shell tools; deterministic Deadman code validates recommendations and executes only policy-approved actions.
 
-For submission, capture the `/feedback` session ID from the Codex thread used for the core functionality and include that ID in the required submission field. This repository does not invent or hard-code a feedback ID.
+For submission, capture the `/feedback` session ID from the Codex implementation thread where the majority of core functionality was built, rather than the earlier planning thread. This repository does not invent or hard-code a feedback ID.
 
 [`CODEX_LOG.md`](CODEX_LOG.md) records the implementation and validation history.
