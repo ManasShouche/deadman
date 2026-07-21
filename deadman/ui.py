@@ -159,18 +159,25 @@ def render_live_codex_processes(processes: Iterable[LiveCodexProcess]) -> Panel:
     return Panel(table, title="Live Codex processes in this repo", border_style="cyan")
 
 
-def render_recovery_outcome(outcome: RecoveryOutcome) -> Panel:
+def render_recovery_outcome(outcome: RecoveryOutcome, *, backend: str | None = None) -> Panel:
     """Render one attach/agent recovery incident result."""
 
     colors = {"recovered": "green", "awaiting_approval": "yellow", "escalated": "red"}
     border = colors.get(outcome.status, "yellow")
+    diagnosis = outcome.diagnosis
     table = Table.grid(padding=(0, 1))
     table.add_column(style="cyan", no_wrap=True)
     table.add_column()
     table.add_row("Status", outcome.status)
     table.add_row("Signal", outcome.signal.kind.value)
     table.add_row("Hung pid", str(outcome.signal.details.get("pid")))
-    table.add_row("Recommended", outcome.diagnosis.recommended_action.value)
+    # The model's own output: what proves GPT-5.6 (not the fixture) diagnosed this.
+    if backend is not None:
+        table.add_row("Diagnosed by", backend)
+    table.add_row("Recommended", diagnosis.recommended_action.value)
+    table.add_row("Confidence", f"{diagnosis.confidence:.2f}")
+    table.add_row("Rationale", diagnosis.rationale)
+    table.add_row("Guidance", diagnosis.guidance)
     table.add_row("Policy", "allowed" if outcome.policy.allowed else outcome.policy.reason)
     if outcome.action_result is not None:
         table.add_row("Action", outcome.action_result.message)

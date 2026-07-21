@@ -61,6 +61,40 @@ def test_live_codex_process_label_prefers_session_id() -> None:
     assert unlinked.label == "pid:11"
 
 
+def test_listening_descendant_is_observed_and_exempt_from_hung_detection() -> None:
+    from deadman.detectors import detect_hung_process
+    from deadman.domain import DetectorConfig
+    from deadman.monitor import observe_descendant
+
+    code = (
+        "import socket, time; s = socket.socket(); s.bind(('127.0.0.1', 0)); s.listen(); "
+        "print(s.getsockname()[1], flush=True); time.sleep(30)"
+    )
+    child = subprocess.Popen([sys.executable, "-c", code], stdout=subprocess.PIPE, text=True)
+    try:
+        assert child.stdout is not None
+        port = int(child.stdout.readline().strip())
+        time.sleep(0.3)
+
+        observation = observe_descendant(
+            root_pid=os.getpid(),
+            pid=child.pid,
+            observed_at=time.monotonic(),
+            first_seen_at=0.0,
+        )
+        assert port in observation.listening_ports
+
+        # Idle far past the threshold, but a listening service is never hung.
+        signal = detect_hung_process(
+            [observation],
+            now=time.monotonic() + 100,
+            config=DetectorConfig(hung_timeout_seconds=1.0),
+        )
+        assert signal is None
+    finally:
+        _terminate(child)
+
+
 def test_drop_nested_candidates_keeps_top_most_ancestor(tmp_path: Path) -> None:
     # A parent process that spawns a child mirrors `node <path>/codex` -> `codex`.
     child_pid_file = tmp_path / "child.pid"

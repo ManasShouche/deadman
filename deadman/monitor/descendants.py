@@ -98,11 +98,15 @@ def observe_descendant(
         is_descendant = parent_pid == root_pid or any(
             parent.pid == root_pid for parent in process.parents()
         )
+        # A process listening on a port is a persistent service (dev server, DB),
+        # not a hung command. The hung detector exempts it, so it must be observed.
+        listening_ports = _listening_ports(process) if is_running else ()
     except PROCESS_LOOKUP_ERRORS:
         parent_pid = None
         command_line = ()
         is_running = False
         is_descendant = False
+        listening_ports = ()
 
     return ProcessObservation(
         evidence_id=f"agent_proc_{pid}_{int(observed_at * 1000)}",
@@ -115,7 +119,23 @@ def observe_descendant(
         observed_at=observed_at,
         last_stdout_at=first_seen_at,
         last_stderr_at=first_seen_at,
+        listening_ports=listening_ports,
     )
+
+
+def _listening_ports(process: psutil.Process) -> tuple[int, ...]:
+    """Return the ports a process is listening on, empty if none or inaccessible."""
+
+    try:
+        connections = process.net_connections(kind="inet")
+    except PROCESS_LOOKUP_ERRORS:
+        return ()
+    ports = [
+        int(connection.laddr.port)
+        for connection in connections
+        if connection.status == psutil.CONN_LISTEN and connection.laddr
+    ]
+    return tuple(sorted(ports))
 
 
 # Persistent Codex helper executables observed in a live Codex 0.144.4 tree.

@@ -280,7 +280,10 @@ def attach(
             "Re-run with --auto-recover to act."
         )
 
-    diagnosis_client = _resolve_diagnosis_client(workspace, diagnosis=diagnosis, model=model)
+    diagnosis_client, backend = _resolve_diagnosis_client(
+        workspace, diagnosis=diagnosis, model=model
+    )
+    console.print(f"[deadman] diagnosis backend: {backend}")
     try:
         incidents = run_attach_supervisor(
             selected,
@@ -291,7 +294,9 @@ def attach(
             auto_recover=auto_recover,
             poll_interval_seconds=poll_interval,
             on_status=lambda message: console.print(f"[deadman] {message}"),
-            on_recovery=lambda outcome: console.print(render_recovery_outcome(outcome)),
+            on_recovery=lambda outcome: console.print(
+                render_recovery_outcome(outcome, backend=backend)
+            ),
         )
     except KeyboardInterrupt:
         console.print("[deadman] detached; Codex session left running")
@@ -425,7 +430,9 @@ def _resolve_diagnosis_client(
     *,
     diagnosis: str,
     model: str,
-) -> DiagnosisClient:
+) -> tuple[DiagnosisClient, str]:
+    """Return the diagnosis client and a human-readable backend label."""
+
     if diagnosis not in {"auto", "fake", "openai"}:
         raise typer.BadParameter("--diagnosis must be auto, fake, or openai")
     credentials = load_openai_credentials(workspace)
@@ -435,5 +442,8 @@ def _resolve_diagnosis_client(
             "live OpenAI diagnosis requires OPENAI_API_KEY in the environment or project .env"
         )
     if use_openai:
-        return build_default_openai_diagnosis_client(model=model)
-    return FakeDiagnosisClient()
+        return (
+            build_default_openai_diagnosis_client(model=model),
+            f"openai · {model} ({credentials.source})",
+        )
+    return FakeDiagnosisClient(), "deterministic fixture (no API key)"
