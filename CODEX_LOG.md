@@ -153,3 +153,4 @@ This append-only log records how Codex and the developer built Deadman. It is de
 
 - **Evidence:** the first three-platform run failed on ANSI-styled CLI output, missing Git author configuration, Windows-incompatible `os.kill(pid, 0)`, and invalid JSON created by injecting a Windows path with string replacement.
 - **Codex contribution:** made CLI assertions style-independent and made the affected fixtures self-contained and path-safe without skipping Windows coverage.
+- **Static portability:** replaced direct POSIX-only constant references in the guarded PTY module so Windows mypy can validate the complete package.

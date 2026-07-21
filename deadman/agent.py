@@ -76,9 +76,10 @@ def run_agent_cli(
     stdin_fd = _fileno_or_none(sys.stdin)
     stdout_fd = _fileno_or_none(sys.stdout)
     old_tty = None
-    old_sigwinch = signal_module.getsignal(signal_module.SIGWINCH)
+    sigwinch = _required_int_capability(signal_module, "SIGWINCH")
+    old_sigwinch = signal_module.getsignal(sigwinch)
     signal_module.signal(
-        signal_module.SIGWINCH,
+        sigwinch,
         lambda _signum, _frame: _resize_child_pty(master_fd),
     )
     if stdin_fd is not None and sys.stdin.isatty():
@@ -158,7 +159,7 @@ def run_agent_cli(
             )
             _write_status(f"[deadman] {outcome.status}: {outcome.message}\n")
     finally:
-        signal_module.signal(signal_module.SIGWINCH, old_sigwinch)
+        signal_module.signal(sigwinch, old_sigwinch)
         if old_tty is not None and stdin_fd is not None:
             termios.tcsetattr(stdin_fd, termios.TCSADRAIN, old_tty)
         try:
@@ -182,7 +183,7 @@ def _persist_recent_observations(
 
 def _poll_exit_code(pid: int) -> int | None:
     try:
-        finished_pid, status = os.waitpid(pid, os.WNOHANG)
+        finished_pid, status = os.waitpid(pid, _required_int_capability(os, "WNOHANG"))
     except ChildProcessError:
         return 0
     if finished_pid == 0:
@@ -199,10 +200,11 @@ def _wait_exit_code(pid: int) -> int:
 
 
 def _status_code(status: int) -> int:
-    if os.WIFEXITED(status):
-        return os.WEXITSTATUS(status)
-    if os.WIFSIGNALED(status):
-        return 128 + os.WTERMSIG(status)
+    signal_number = status & 0x7F
+    if signal_number == 0:
+        return (status >> 8) & 0xFF
+    if signal_number != 0x7F:
+        return 128 + signal_number
     return 1
 
 
@@ -240,9 +242,18 @@ def _set_window_size(fd: int, *, columns: int, rows: int) -> None:
         import struct
 
         winsize = struct.pack("HHHH", rows, columns, 0, 0)
-        fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
+        ioctl = getattr(fcntl, "ioctl", None)
+        if callable(ioctl):
+            ioctl(fd, termios.TIOCSWINSZ, winsize)
     except OSError:
         return
+
+
+def _required_int_capability(module: object, name: str) -> int:
+    value = getattr(module, name, None)
+    if not isinstance(value, int):
+        raise RuntimeError(f"required POSIX capability is unavailable: {name}")
+    return value
 
 
 def _write_status(message: str) -> None:
