@@ -143,3 +143,8 @@ This append-only log records how Codex and the developer built Deadman. It is de
 - **Goal:** make the trust claim and Codex contribution legible to judges without fabricating production metrics or a feedback session ID.
 - **Validation:** one isolated live attach recovery smoke completed; three healthy supervised controls produced zero signals and zero recovery actions.
 - **Codex contribution:** documented the build, adversarial process-safety review, and runtime GPT boundary; the README instructs the submitter to capture the actual `/feedback` ID from the core-functionality thread.
+
+## 2026-07-21 — Cross-platform supervision boundary
+
+- **Goal:** prevent Unix-only PTY and pipe-polling code from breaking the complete CLI on Windows.
+- **Codex contribution:** made POSIX PTY imports optional, kept `agent` explicitly macOS/Linux-only, and replaced `run --hung-timeout` pipe polling with reader threads so managed live supervision has a Windows-compatible I/O path. Added platform-focused tests and a Windows/macOS/Linux CI matrix; process actions still fail closed when ownership inspection is unavailable.

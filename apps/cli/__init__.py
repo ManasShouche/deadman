@@ -20,6 +20,7 @@ from deadman.config import load_openai_credentials
 from deadman.detectors.replay import replay_fixture
 from deadman.diagnosis import FakeDiagnosisClient, build_default_openai_diagnosis_client
 from deadman.paths import default_database_path, project_root
+from deadman.platforms import supports_pty_supervision
 from deadman.recovery import DiagnosisClient
 from deadman.report import render_incident_report
 from deadman.run import run_supervised_command
@@ -138,7 +139,6 @@ def run(
         raise typer.BadParameter("provide a command after --")
     if diagnosis not in {"auto", "fake", "openai"}:
         raise typer.BadParameter("--diagnosis must be auto, fake, or openai")
-
     workspace = project_root(Path.cwd())
     db_path = database or default_database_path(workspace)
     _print_startup(db_path, auto_recover=auto_recover)
@@ -199,6 +199,11 @@ def agent(
     argv = tuple(ctx.args)
     if not argv:
         raise typer.BadParameter("provide an interactive command after --")
+    if not supports_pty_supervision():
+        raise typer.BadParameter(
+            "deadman agent requires a POSIX PTY; on Windows, start Codex normally "
+            "and use deadman attach from the same repository"
+        )
     workspace = project_root(Path.cwd())
     db_path = database or default_database_path(workspace)
     _print_startup(db_path, auto_recover=auto_recover)

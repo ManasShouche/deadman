@@ -3,16 +3,27 @@
 from __future__ import annotations
 
 import os
-import pty
 import select
 import shutil
 import signal as signal_module
 import sys
-import termios
 import time
-import tty
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
+
+try:
+    import pty as _pty
+    import termios as _termios
+    import tty as _tty
+except ModuleNotFoundError:
+    pty: Any | None = None
+    termios: Any | None = None
+    tty: Any | None = None
+else:
+    pty = _pty
+    termios = _termios
+    tty = _tty
 
 from deadman.diagnosis import FakeDiagnosisClient
 from deadman.domain import (
@@ -23,6 +34,7 @@ from deadman.domain import (
 )
 from deadman.monitor import DescendantTracker
 from deadman.paths import default_database_path, project_root
+from deadman.platforms import supports_pty_supervision
 from deadman.recovery import DiagnosisClient, recover_hung_descendant
 from deadman.store import EvidenceStore
 
@@ -42,6 +54,11 @@ def run_agent_cli(
 
     if not argv:
         raise ValueError("argv must not be empty")
+    if not supports_pty_supervision() or pty is None or termios is None or tty is None:
+        raise RuntimeError(
+            "deadman agent requires a POSIX PTY; on Windows, start Codex normally "
+            "and use deadman attach from the same repository"
+        )
 
     root = project_root(workspace)
     db_path = database_path or default_database_path(root)
@@ -216,6 +233,8 @@ def _resize_child_pty(master_fd: int) -> None:
 
 
 def _set_window_size(fd: int, *, columns: int, rows: int) -> None:
+    if termios is None:
+        return
     try:
         import fcntl
         import struct

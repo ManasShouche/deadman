@@ -1,9 +1,10 @@
 import os
-import signal
 import subprocess
 import sys
 import time
 from pathlib import Path
+
+import psutil
 
 from deadman.domain import RecoveryAction
 from deadman.executor import terminate_descendant_process, write_checkpoint_handoff
@@ -92,8 +93,8 @@ def test_terminate_descendant_process_stops_owned_subtree() -> None:
     finally:
         for pid in (grandchild_pid, child.pid):
             try:
-                os.kill(pid, signal.SIGKILL)
-            except ProcessLookupError:
+                psutil.Process(pid).kill()
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
 
 
@@ -133,8 +134,8 @@ def test_terminate_descendant_process_rejects_orphaned_setsid_grandchild() -> No
         assert "not a proven descendant" in result.message
     finally:
         try:
-            os.kill(target_pid, signal.SIGKILL)
-        except ProcessLookupError:
+            psutil.Process(target_pid).kill()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
             pass
 
 

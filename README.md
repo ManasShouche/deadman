@@ -21,6 +21,26 @@ It is not a replacement for Codex and it never gives a model shell, process-cont
 
 `--auto-recover` is **off by default** for every command. Without it, Deadman records the signal, diagnosis, and policy result at the approval boundary instead of performing a recovery action.
 
+## Supported Platforms
+
+Deadman's data model, SQLite store, replay, report, `watch`, `attach`, and managed `run` paths are designed to run on macOS, Linux, and Windows. Live `run --hung-timeout` reads stdout and stderr through dedicated threads rather than `select()`, then uses `psutil` to inspect and recover only proven descendants.
+
+The interactive `agent` command remains macOS/Linux-only because its terminal passthrough depends on POSIX PTYs, `termios`, `fcntl`, `waitpid`, and Unix signal behavior. On Windows, use managed JSONL supervision:
+
+```powershell
+deadman run --hung-timeout 20 --auto-recover -- codex exec --json --sandbox workspace-write "task"
+```
+
+For an already-running interactive Codex session, use `attach` from a second PowerShell or Command Prompt in the same repository:
+
+```powershell
+codex --sandbox workspace-write
+# In a second terminal, from the same repository:
+deadman attach --hung-timeout 20 --auto-recover
+```
+
+Deadman reports the PTY boundary clearly instead of failing at import time or with a platform traceback. CI is configured for Windows, macOS, and Linux; Windows process ownership and termination remain fail-closed when `psutil` cannot inspect a process.
+
 ## Judge Quickstart
 
 ```bash
@@ -213,7 +233,7 @@ deadman attach --pid 12345 --hung-timeout 60 --auto-recover \
 | `--model MODEL` | Model for live OpenAI diagnosis; default `gpt-5.6`. |
 | `--poll-interval SECONDS` | Process observation interval; default `0.5`. |
 
-`attach` proves the live process root and can recover descendants of that root. It does not yet establish an exact one-to-one link between the chosen process and a persisted Codex session file when several sessions use the same repository.
+`attach` proves the live process root and can recover descendants of that root. It does not yet establish an exact one-to-one link between the chosen process and a persisted Codex session file when several sessions use the same repository. It is the Windows route for supervising an interactive Codex process that Deadman did not launch.
 
 ### `deadman watch`
 

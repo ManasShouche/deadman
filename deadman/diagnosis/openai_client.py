@@ -7,7 +7,7 @@ from typing import Any, Protocol
 
 from pydantic import ValidationError
 
-from deadman.domain import Diagnosis, Signal
+from deadman.domain import Diagnosis, RecoveryAction, Signal, SignalKind
 
 
 class ResponsesClient(Protocol):
@@ -79,5 +79,36 @@ def _diagnosis_text_format() -> dict[str, object]:
         "type": "json_schema",
         "name": "deadman_diagnosis",
         "strict": True,
-        "schema": Diagnosis.model_json_schema(),
+        "schema": _diagnosis_schema(),
+    }
+
+
+def _diagnosis_schema() -> dict[str, Any]:
+    """Strict Responses-API JSON schema derived from the Diagnosis model.
+
+    OpenAI strict structured outputs require every object to set
+    `additionalProperties: false`, list all properties in `required`, and omit
+    numeric/format constraints (e.g. `minimum`). Pydantic's generated schema
+    violates all three, so the schema is built directly from the typed enums.
+    Pydantic still validates the response after parsing, including the
+    confidence range.
+    """
+
+    properties = {
+        "classification": {"type": "string", "enum": [kind.value for kind in SignalKind]},
+        "confidence": {"type": "number"},
+        "recommended_action": {
+            "type": "string",
+            "enum": [action.value for action in RecoveryAction],
+        },
+        "rationale": {"type": "string"},
+        "evidence_ids": {"type": "array", "items": {"type": "string"}},
+        "guidance": {"type": "string"},
+        "requires_human_approval": {"type": "boolean"},
+    }
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": properties,
+        "required": list(properties),
     }

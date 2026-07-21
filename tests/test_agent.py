@@ -3,12 +3,17 @@ import sys
 import time
 from pathlib import Path
 
+import pytest
+
 from deadman.agent import run_agent_cli
 from deadman.domain import ProcessObservation
 from deadman.monitor import is_baseline_descendant
 from deadman.store import EvidenceStore
 
+requires_posix_pty = pytest.mark.skipif(os.name != "posix", reason="requires a POSIX PTY")
 
+
+@requires_posix_pty
 def test_run_agent_cli_returns_child_exit_code(tmp_path: Path) -> None:
     exit_code = run_agent_cli(
         (sys.executable, "-c", "print('agent ok')"),
@@ -19,6 +24,7 @@ def test_run_agent_cli_returns_child_exit_code(tmp_path: Path) -> None:
     assert exit_code == 0
 
 
+@requires_posix_pty
 def test_run_agent_cli_sets_child_terminal_dimensions(tmp_path: Path) -> None:
     output = tmp_path / "size.txt"
     script = (
@@ -42,6 +48,7 @@ def test_run_agent_cli_sets_child_terminal_dimensions(tmp_path: Path) -> None:
     assert int(env_rows) >= 24
 
 
+@requires_posix_pty
 def test_run_agent_cli_default_database_uses_git_root(tmp_path: Path) -> None:
     root = tmp_path / "repo"
     subdir = root / "nested"
@@ -114,6 +121,7 @@ def test_user_commands_are_recoverable_not_baseline() -> None:
         assert not is_baseline_descendant(_observation(command_line)), command_line
 
 
+@requires_posix_pty
 def test_run_agent_cli_auto_recovers_hung_child(tmp_path: Path) -> None:
     script = (
         "import subprocess, sys; "
@@ -139,6 +147,7 @@ def test_run_agent_cli_auto_recovers_hung_child(tmp_path: Path) -> None:
     assert store.count("verification_results") == 1
 
 
+@requires_posix_pty
 def test_run_agent_cli_detects_hung_child_despite_parent_chatter(tmp_path: Path) -> None:
     script = (
         "import subprocess, sys, time; "
@@ -163,6 +172,7 @@ def test_run_agent_cli_detects_hung_child_despite_parent_chatter(tmp_path: Path)
     assert EvidenceStore(database).count("action_results") == 1
 
 
+@requires_posix_pty
 def test_run_agent_cli_auto_recovery_stops_inner_sleep_child(tmp_path: Path) -> None:
     grandchild_pid_file = tmp_path / "grandchild.pid"
     inner_script = (

@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-import select
+import queue
 import subprocess
+import threading
 import time
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Protocol
+from typing import IO, Protocol
 
 import psutil
 
@@ -163,13 +165,13 @@ def _run_live_supervised_command(
         shell=False,
         bufsize=1,
     )
+    output = _OutputPump(process)
     deadline = None if timeout_seconds is None else started_at + timeout_seconds
 
     try:
         while process.poll() is None:
             now = time.monotonic()
-            last_times: dict[str, float] = {}
-            _drain_available_output(process, stdout_lines, now, last_times)
+            last_times = output.drain(stdout_lines)
             last_stdout_at = last_times.get("stdout", last_stdout_at)
             last_stderr_at = last_times.get("stderr", last_stderr_at)
 
@@ -242,7 +244,7 @@ def _run_live_supervised_command(
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait(timeout=1.0)
-        _drain_remaining_output(process, stdout_lines)
+        output.finish(stdout_lines)
 
     returncode = process.poll()
     if returncode is None:
@@ -372,41 +374,49 @@ def _report(
     return "\n".join(lines)
 
 
-def _drain_available_output(
-    process: subprocess.Popen[str],
-    stdout_lines: list[str],
-    now: float,
-    last_times: dict[str, float],
-) -> None:
-    streams = [stream for stream in (process.stdout, process.stderr) if stream is not None]
-    if not streams:
-        return
+class _OutputPump:
+    """Read subprocess pipes without relying on socket-only Windows ``select``."""
 
-    readable, _, _ = select.select(streams, (), (), 0)
-    for stream in readable:
-        line = stream.readline()
-        if not line:
-            continue
-        if stream is process.stdout:
-            stdout_lines.append(line.rstrip("\n"))
-            last_times["stdout"] = now
-        else:
-            last_times["stderr"] = now
+    def __init__(self, process: subprocess.Popen[str]) -> None:
+        self._events: queue.Queue[tuple[str, str, float]] = queue.Queue()
+        self._threads = tuple(
+            threading.Thread(
+                target=self._read_stream,
+                args=(name, stream),
+                daemon=True,
+                name=f"deadman-{name}-reader",
+            )
+            for name, stream in self._streams(process)
+        )
+        for thread in self._threads:
+            thread.start()
 
+    @staticmethod
+    def _streams(process: subprocess.Popen[str]) -> Iterator[tuple[str, IO[str]]]:
+        if process.stdout is not None:
+            yield "stdout", process.stdout
+        if process.stderr is not None:
+            yield "stderr", process.stderr
 
-def _drain_remaining_output(process: subprocess.Popen[str], stdout_lines: list[str]) -> None:
-    streams = [stream for stream in (process.stdout, process.stderr) if stream is not None]
-    while streams:
-        readable, _, _ = select.select(streams, (), (), 0)
-        if not readable:
-            return
-        for stream in readable:
-            line = stream.readline()
-            if not line:
-                streams.remove(stream)
-                continue
-            if stream is process.stdout:
+    def _read_stream(self, name: str, stream: IO[str]) -> None:
+        for line in stream:
+            self._events.put((name, line, time.monotonic()))
+
+    def drain(self, stdout_lines: list[str]) -> dict[str, float]:
+        last_times: dict[str, float] = {}
+        while True:
+            try:
+                name, line, observed_at = self._events.get_nowait()
+            except queue.Empty:
+                return last_times
+            if name == "stdout":
                 stdout_lines.append(line.rstrip("\n"))
+            last_times[name] = observed_at
+
+    def finish(self, stdout_lines: list[str]) -> None:
+        for thread in self._threads:
+            thread.join(timeout=1.0)
+        self.drain(stdout_lines)
 
 
 def _live_descendant_pids(root_pid: int) -> tuple[int, ...]:

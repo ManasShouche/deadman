@@ -39,6 +39,25 @@ def test_run_supervised_command_reports_nonzero_run(tmp_path: Path) -> None:
     assert "Return code: 7" in summary.report
 
 
+def test_live_run_captures_jsonl_while_draining_stderr(tmp_path: Path) -> None:
+    script = (
+        "import json, sys; "
+        "print('diagnostic', file=sys.stderr, flush=True); "
+        "print(json.dumps({'type':'thread.started','thread_id':'portable-live'})); "
+        "print(json.dumps({'type':'item.completed','item':{'type':'agent_message'}}))"
+    )
+
+    summary = run_supervised_command(
+        (sys.executable, "-c", script),
+        workspace=tmp_path,
+        hung_timeout_seconds=5.0,
+    )
+
+    assert summary.status == "completed"
+    assert summary.session_id == "portable-live"
+    assert summary.raw_event_count == 2
+
+
 def test_run_supervised_command_blocks_lingering_codex_command_without_auto_recover(
     tmp_path: Path,
 ) -> None:

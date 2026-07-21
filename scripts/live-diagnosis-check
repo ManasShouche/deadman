@@ -1,0 +1,69 @@
+#!/usr/bin/env sh
+# One live GPT-5.6 diagnosis call to confirm the model path is active.
+#
+# It loads OPENAI_API_KEY the same way Deadman does (environment first, then the
+# repo's ignored .env), sends ONE synthetic HUNG_PROCESS evidence packet through
+# the real OpenAI Responses API, and prints the resolved model plus the typed,
+# schema-validated recommendation. No Codex process and no database are touched.
+#
+# Usage:
+#   ./scripts/live-diagnosis-check            # model gpt-5.6
+#   ./scripts/live-diagnosis-check gpt-5.6    # or pass an explicit model id
+set -eu
+
+ROOT=$(CDPATH= cd "$(dirname "$0")/.." && pwd)
+PYTHON=${PYTHON:-python3}
+if [ ! -x "$ROOT/.venv/bin/python" ]; then
+  "$PYTHON" -m venv "$ROOT/.venv"
+  "$ROOT/.venv/bin/python" -m pip install --upgrade pip >/dev/null
+  "$ROOT/.venv/bin/python" -m pip install -e "$ROOT" >/dev/null
+fi
+
+MODEL="${1:-gpt-5.6}"
+
+"$ROOT/.venv/bin/python" - "$MODEL" <<'PY'
+import sys
+import time
+from pathlib import Path
+
+from deadman.config import load_openai_credentials
+from deadman.domain import Severity, Signal, SignalKind
+from deadman.paths import project_root
+
+model = sys.argv[1]
+workspace = project_root(Path.cwd())
+credentials = load_openai_credentials(workspace)
+
+if not credentials.available:
+    print("OpenAI key: NOT configured.")
+    print(f"  Set OPENAI_API_KEY in your shell, or add it to {credentials.env_file}")
+    print("  cp .env.example .env  # then edit OPENAI_API_KEY=sk-...")
+    raise SystemExit(2)
+
+print(f"OpenAI key: available (source: {credentials.source})")
+print(f"Model requested: {model}")
+
+from deadman.diagnosis import build_default_openai_diagnosis_client
+
+signal = Signal(
+    kind=SignalKind.HUNG_PROCESS,
+    severity=Severity.CRITICAL,
+    evidence_ids=("proc_001",),
+    fingerprint="HUNG_PROCESS:livecheck",
+    details={"pid": 4321, "root_pid": 1234, "idle_seconds": 61.0, "timeout_seconds": 60.0},
+)
+
+client = build_default_openai_diagnosis_client(model=model)
+started = time.monotonic()
+try:
+    diagnosis = client.diagnose(signal)
+except Exception as exc:  # noqa: BLE001 - surface the real failure to the operator
+    print(f"\nLIVE CALL FAILED: {type(exc).__name__}: {exc}")
+    print("  If this is a model error, retry with a valid id, e.g.:")
+    print("  ./scripts/live-diagnosis-check gpt-5.6")
+    raise SystemExit(1)
+
+elapsed = time.monotonic() - started
+print(f"\nLIVE CALL OK in {elapsed:.1f}s. The model returned a validated diagnosis:\n")
+print(diagnosis.model_dump_json(indent=2))
+PY
