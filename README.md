@@ -90,6 +90,28 @@ sqlite3 .deadman/deadman.sqlite 'select count(*) from signals; select count(*) f
 
 All commands resolve the default database to `<git-root>/.deadman/deadman.sqlite`, not the shell's current directory. Startup always prints the resolved SQLite path and whether auto recovery is on.
 
+### Anatomy of a supervised call
+
+`run` and `agent` split into two halves at `--`: Deadman options on the left, the command Deadman launches on the right.
+
+```text
+deadman run  --hung-timeout 20 --auto-recover  --  codex exec --json --sandbox workspace-write "Fix the failing test"
+             └────── Deadman options ─────────┘     └──────────────── Codex command (passed verbatim) ─────────────┘
+```
+
+Everything after `--` is passed to the child process as an argument array. Deadman never shell-interpolates it and never edits the prompt. `attach`, `watch`, `replay`, `demo`, and `report` take no `--` command — `attach`/`watch` find an existing Codex session, and the rest read shipped evidence.
+
+The Codex flags used in the examples are Codex's own, not Deadman's:
+
+| Codex token | What it does | Why Deadman examples use it |
+| --- | --- | --- |
+| `exec` | Codex's non-interactive mode: run one task, emit events, exit. | The surface `deadman run` supervises. |
+| `--json` | Codex writes JSON Lines events to stdout. | Deadman's adapter parses these into normalized evidence. |
+| `--sandbox read-only` \| `workspace-write` | Codex's own file-write sandbox level. | Deadman's guarded auto-resume requires one of these two (never full access). |
+| `--ask-for-approval never` | Codex runs tool calls without pausing for interactive approval. | Lets a hung-command scenario reproduce deterministically. |
+| `--no-alt-screen` | Codex renders inline instead of a full-screen TUI. | Keeps `deadman agent` PTY passthrough readable. |
+| `"<prompt>"` | The natural-language task for Codex. | Passed verbatim as one argument; Deadman never interprets it. |
+
 ### `deadman run`
 
 Use `run` when Deadman should start the command itself. It is the supported surface for non-interactive `codex exec --json` sessions.
@@ -120,7 +142,7 @@ deadman run --hung-timeout 60 --auto-recover --resume-after-recovery -- \
 | `--timeout SECONDS` | Stop the supervised command after this duration. |
 | `--hung-timeout SECONDS` | Enable live hung-descendant detection after this idle time. |
 | `--auto-recover` | Permit policy-approved recovery actions. Off by default. |
-| `--diagnosis auto|fake|openai` | Use configured OpenAI, deterministic fixture diagnosis, or require OpenAI. |
+| `--diagnosis auto\|fake\|openai` | Use configured OpenAI, deterministic fixture diagnosis, or require OpenAI. |
 | `--model MODEL` | Model for `--diagnosis openai`; default `gpt-5.6`. |
 | `--resume-after-recovery` | Resume a verified recovered `codex exec` session. Requires an explicit safe Codex sandbox. |
 
@@ -185,7 +207,7 @@ deadman attach --pid 12345 --hung-timeout 60 --auto-recover \
 | `--database PATH` | Override the SQLite database path. |
 | `--hung-timeout SECONDS` | Idle duration before a descendant is considered hung; default `60`. |
 | `--auto-recover` | Permit recovery of a proven owned descendant. Off by default. |
-| `--diagnosis auto|fake|openai` | Diagnosis backend. `auto` uses OpenAI only when a key is configured. |
+| `--diagnosis auto\|fake\|openai` | Diagnosis backend. `auto` uses OpenAI only when a key is configured. |
 | `--model MODEL` | Model for live OpenAI diagnosis; default `gpt-5.6`. |
 | `--poll-interval SECONDS` | Process observation interval; default `0.5`. |
 
@@ -252,6 +274,57 @@ deadman config check
 ```
 
 This displays whether OpenAI credentials are available, their source without revealing a secret, the project `.env` path, the resolved SQLite path, offline replay readiness, and the fact that Codex TUI authentication is never read by Deadman.
+
+## Signals, Actions, and the Diagnosis Contract
+
+Deadman's detectors emit one of four typed **signals**. Each opens at most one incident and never acts directly.
+
+| Signal (`SignalKind`) | Fires when | False-positive guard |
+| --- | --- | --- |
+| `HUNG_PROCESS` | A proven owned descendant has produced no output for `--hung-timeout` and has not exited. | A listening port or a configured ready pattern marks a process persistent, not hung. |
+| `REPEATED_FAILURE` | The same normalized failure signature repeats at least 3 times with an unchanged workspace and test summary. | A new diff, changed test result, or new hypothesis resets it. |
+| `NO_PROGRESS` | At least 4 completed attempts show no workspace-fingerprint or test-summary change. | Requires identifiable completed attempts; otherwise replay-only. |
+| `SESSION_BUDGET_RISK` | Usage telemetry crosses a user-defined budget, or a manual checkpoint is requested. | Disabled entirely when usage telemetry is unavailable. |
+
+The diagnosis may recommend only one of five typed **recovery actions**, which only deterministic code executes:
+
+| Action (`RecoveryAction`) | What deterministic code does | Default approval |
+| --- | --- | --- |
+| `OBSERVE` | Records the diagnosis; takes no action. | Automatic |
+| `TERMINATE_DESCENDANT_PROCESS` | Bounded terminate of a freshly proven owned descendant. | `--auto-recover` |
+| `CANCEL_AND_RESUME` | Stops the run and resumes the persisted session with grounded guidance. | `--auto-recover` + a session ID |
+| `CHECKPOINT_AND_RESPAWN` | Writes a handoff under `.deadman/handoffs/` and starts a fresh session. | `--auto-recover` |
+| `HALT_AND_ESCALATE` | Stops recovery and prints the incident report. | Automatic |
+
+> **Live vs. replay:** live supervision (`run`/`agent`/`attach`) currently detects `HUNG_PROCESS` and executes `TERMINATE_DESCENDANT_PROCESS`. The other three signals and their actions are exercised through the deterministic replay fixtures.
+
+### What the model sees and returns
+
+GPT-5.6 is called only after a deterministic signal opens an incident. It receives a **compact evidence packet** (the signal's kind, severity, cited evidence IDs, and threshold details) and **no tools** — it cannot name a PID, path, or evidence ID that is not already in the packet. It must return this strict, Pydantic-validated JSON:
+
+```json
+{
+  "classification": "HUNG_PROCESS",
+  "confidence": 0.86,
+  "recommended_action": "TERMINATE_DESCENDANT_PROCESS",
+  "rationale": "The owned child produced no output past the idle threshold.",
+  "evidence_ids": ["proc_001"],
+  "guidance": "Stop rerunning the blocked command; continue from verified progress.",
+  "requires_human_approval": true
+}
+```
+
+| Field | Type | Meaning and check |
+| --- | --- | --- |
+| `classification` | `SignalKind` | Must equal the open signal's kind, or policy rejects the diagnosis. |
+| `confidence` | `0.0`–`1.0` | The model's stated confidence. |
+| `recommended_action` | `RecoveryAction` | One of the five actions above. |
+| `rationale` | text | Why this action fits the evidence. |
+| `evidence_ids` | list | Must be a subset of the signal's evidence IDs, or policy rejects it. |
+| `guidance` | text | Grounded instruction used when resuming or handing off. |
+| `requires_human_approval` | bool | The model's own approval hint; deterministic policy still decides. |
+
+The policy engine rejects any diagnosis that names evidence outside the signal, mismatches the signal's classification, reuses an action fingerprint, requests `CANCEL_AND_RESUME` without a known session ID, or requests any non-`OBSERVE`/`HALT_AND_ESCALATE` action without `--auto-recover`.
 
 ## Evidence and Incident Fields
 
