@@ -4,6 +4,8 @@
 
 Deadman is a local recovery supervisor for Codex sessions. It watches a Codex process or recorded session evidence, detects bounded failure states, requests a typed diagnosis, applies only policy-approved recovery actions, verifies the result, and stores an auditable incident record.
 
+**Current local validation:** 1/1 isolated live attach recovery smoke completed; 0 recovery actions across 3 healthy supervised controls.
+
 It is not a replacement for Codex and it never gives a model shell, process-control, filesystem-write, or session-control tools. Deterministic code owns observation, policy, recovery, and verification.
 
 ## What Can I Run?
@@ -384,5 +386,19 @@ Recovery is bounded by process ownership and policy:
 ```
 
 The project is a Python terminal wrapper using Typer, Rich, SQLite, Pydantic, `psutil`, and the OpenAI SDK. Rust and a Codex plugin/MCP companion are explicitly roadmap items; the external supervisor owns the failure domain for this MVP.
+
+## How Codex Was Used
+
+Codex was used as the implementation and review partner throughout the project, with the human retaining design and safety decisions.
+
+- It translated the recovery specification into the Python package structure, typed domain models, deterministic detector pipeline, SQLite evidence store, and CLI commands.
+- It implemented and reviewed the live `run`, PTY-backed `agent`, live-process `attach`, and persisted-session `watch` modes.
+- It created the replay fixtures, ownership tests, verifier failure tests, policy-evidence rejection tests, and fresh-clone scripts used to make the judge path reproducible.
+- It was used for adversarial live testing. Those runs found a real safety bug where prompt text containing `Python` caused the interactive supervisor to select the Codex process itself. The fix moved classification to executable structure and explicitly excludes Codex helper processes from recovery targets.
+- It was used again to review recovery scope, subtree cleanup, session ownership boundaries, the live attach path, and this operator documentation.
+
+At runtime, GPT-5.6 is deliberately constrained to evidence-bound, typed diagnosis and handoff guidance. It never receives process or shell tools; deterministic Deadman code validates recommendations and executes only policy-approved actions.
+
+For submission, capture the `/feedback` session ID from the Codex thread used for the core functionality and include that ID in the required submission field. This repository does not invent or hard-code a feedback ID.
 
 [`CODEX_LOG.md`](CODEX_LOG.md) records the implementation and validation history.

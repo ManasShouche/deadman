@@ -137,3 +137,9 @@ This append-only log records how Codex and the developer built Deadman. It is de
 
 - **Goal:** make the shipped CLI usable without reading implementation code or inferring which supervision mode applies.
 - **Codex contribution:** rewrote the README around mode selection, real two-terminal recovery, per-command options, expected output, persisted evidence fields, status meanings, and the approval and ownership boundaries.
+
+## 2026-07-21 — README validation and Codex narrative
+
+- **Goal:** make the trust claim and Codex contribution legible to judges without fabricating production metrics or a feedback session ID.
+- **Validation:** one isolated live attach recovery smoke completed; three healthy supervised controls produced zero signals and zero recovery actions.
+- **Codex contribution:** documented the build, adversarial process-safety review, and runtime GPT boundary; the README instructs the submitter to capture the actual `/feedback` ID from the core-functionality thread.
