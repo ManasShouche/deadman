@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+from rich.text import Text
 from typer.testing import CliRunner
 
 from apps.cli import app
@@ -45,12 +46,14 @@ def test_watch_requires_explicit_session_in_noninteractive_mode(
         app,
         ["watch", "--once"],
         env={"CODEX_HOME": str(codex_home)},
+        color=True,
     )
 
+    output = Text.from_ansi(result.output).plain
     assert result.exit_code != 0
-    assert "provide --session" in result.output
-    assert "watch-1" in result.output
-    assert "watch-2" in result.output
+    assert "provide --session" in output
+    assert "watch-1" in output
+    assert "watch-2" in output
 
 
 def test_watch_rejects_session_from_another_workspace(
@@ -76,11 +79,12 @@ def test_watch_rejects_session_from_another_workspace(
 
 
 def test_watch_help_exposes_no_recovery_option() -> None:
-    result = CliRunner().invoke(app, ["watch", "--help"])
+    result = CliRunner().invoke(app, ["watch", "--help"], color=True)
 
+    output = Text.from_ansi(result.output).plain
     assert result.exit_code == 0
-    assert "--session" in result.output
-    assert "--auto-recover" not in result.output
+    assert "--session" in output
+    assert "--auto-recover" not in output
 
 
 def _write_session(codex_home: Path, workspace: Path, session_id: str) -> None:
