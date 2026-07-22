@@ -64,7 +64,7 @@ cd /private/tmp/deadman-real-attach
 git init
 
 codex --no-alt-screen --sandbox workspace-write --ask-for-approval never \
-  "Do not edit files. Run this exact command and wait for it:\n+python3 -c 'import subprocess; raise SystemExit(subprocess.Popen([\"sleep\", \"600\"]).wait())'\nDo not interrupt it yourself."
+  "Do not edit files. Run this exact command and wait for it:\npython3 -c 'import subprocess; raise SystemExit(subprocess.Popen([\"sleep\", \"600\"]).wait())'\nDo not interrupt it yourself."
 ```
 
 Wait until Codex reports that the background command is running. Then open Terminal 2 in the same repository:

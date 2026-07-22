@@ -30,6 +30,7 @@ PROCESS_LOOKUP_ERRORS = (
     psutil.ZombieProcess,
     PermissionError,
 )
+STATUS_INTERVAL_SECONDS = 6.0
 
 
 @dataclass(frozen=True)
@@ -116,6 +117,7 @@ def run_attach_supervisor(
     recovered_fingerprints: set[str] = set()
     incidents = 0
     polls = 0
+    last_status_at = 0.0
 
     while _root_alive(process.pid):
         if max_polls is not None and polls >= max_polls:
@@ -131,6 +133,14 @@ def run_attach_supervisor(
             recovered_fingerprints=recovered_fingerprints,
         )
         if outcome is None:
+            # Healthy heartbeat so monitoring is visibly alive between incidents.
+            now = time.monotonic()
+            if on_status is not None and now - last_status_at >= STATUS_INTERVAL_SECONDS:
+                on_status(
+                    f"monitoring {tracker.watched_count()} owned descendant(s); "
+                    f"baseline ignored={len(tracker.ignored_pids)}; incidents={incidents}"
+                )
+                last_status_at = now
             time.sleep(poll_interval_seconds)
             continue
         incidents += 1
